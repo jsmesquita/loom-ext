@@ -95,3 +95,17 @@ def get_profile_grants(slug: str, group: str) -> tuple[int, dict[str, Any]]:
 
 def delete_client(slug: str) -> tuple[int, dict[str, Any]]:
     return _request("DELETE", f"/v1/clients/{quote(slug, safe='-_.')}")
+
+
+def analytics_summary(*, hours: int = 24, slug: str | None = None) -> tuple[int, dict[str, Any]]:
+    path = f"/v1/analytics/summary?hours={int(hours)}"
+    if slug:
+        path = f"{path}&slug={quote(slug, safe='-_.')}"
+    return _request("GET", path)
+
+
+def analytics_tools(*, hours: int = 24, slug: str | None = None) -> tuple[int, dict[str, Any]]:
+    path = f"/v1/analytics/tools?hours={int(hours)}"
+    if slug:
+        path = f"{path}&slug={quote(slug, safe='-_.')}"
+    return _request("GET", path)

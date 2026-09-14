@@ -121,6 +121,22 @@ class HubHandler(BaseHTTPRequestHandler):
             status_filter = (qs.get("status") or [None])[0]
             _json(self, 200, {"clients": self.store.list_clients(status_filter)})
             return
+        if path == "/v1/analytics/summary":
+            if not self._require_service():
+                return
+            qs = parse_qs(parsed.query)
+            hours = int((qs.get("hours") or ["24"])[0] or 24)
+            slug = (qs.get("slug") or [None])[0]
+            _json(self, 200, self.store.analytics_summary(hours=hours, slug=slug or None))
+            return
+        if path == "/v1/analytics/tools":
+            if not self._require_service():
+                return
+            qs = parse_qs(parsed.query)
+            hours = int((qs.get("hours") or ["24"])[0] or 24)
+            slug = (qs.get("slug") or [None])[0]
+            _json(self, 200, self.store.analytics_tools(hours=hours, slug=slug or None))
+            return
         if path.startswith("/v1/clients/"):
             if not self._require_service():
                 return
@@ -196,6 +212,19 @@ class HubHandler(BaseHTTPRequestHandler):
         if row is None:
             _json(self, 404, {"error": {"message": "not_found"}})
             return
+        try:
+            from mcp_hub.domain.telemetry import telemetry_event
+
+            self.store.record_telemetry(
+                telemetry_event(
+                    event_type="admin_patch",
+                    mcp_client_slug=slug,
+                    phase="ok",
+                    meta={"keys": sorted(str(k) for k in body.keys())},
+                )
+            )
+        except Exception:
+            logger.warning("admin_patch telemetry failed", exc_info=True)
         _json(self, 200, row)
 
     def do_PUT(self) -> None:  # noqa: N802
@@ -233,6 +262,19 @@ class HubHandler(BaseHTTPRequestHandler):
         if row is None:
             _json(self, 404, {"error": {"message": "client_not_found"}})
             return
+        try:
+            from mcp_hub.domain.telemetry import telemetry_event
+
+            self.store.record_telemetry(
+                telemetry_event(
+                    event_type="admin_grants",
+                    mcp_client_slug=mid,
+                    phase="ok",
+                    meta={"group": group, "grant_count": len(grants)},
+                )
+            )
+        except Exception:
+            logger.warning("admin_grants telemetry failed", exc_info=True)
         _json(self, 200, row)
 
     def do_POST(self) -> None:  # noqa: N802
@@ -283,6 +325,26 @@ class HubHandler(BaseHTTPRequestHandler):
                 declared_version=version,
                 declared_family=family,
             )
+            try:
+                from mcp_hub.domain.telemetry import telemetry_event
+
+                self.store.record_telemetry(
+                    telemetry_event(
+                        event_type="initialize",
+                        hub_session_id=connection_id,
+                        mcp_client_slug=slug,
+                        subject=str(identity.get("sub") or ""),
+                        groups=list(identity.get("groups") or []),
+                        phase="ok",
+                        meta={
+                            "declared_family": family,
+                            "declared_version": version,
+                            "client_status": row.get("status"),
+                        },
+                    )
+                )
+            except Exception:
+                logger.warning("initialize telemetry failed", exc_info=True)
             logger.info(
                 "hub_initialize connection=%s slug=%s family=%s status=%s name=%s",
                 connection_id,

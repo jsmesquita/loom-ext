@@ -125,6 +125,7 @@ def run_invoke(
                     })
                     return
                 yield sse("chunk", {"text": f"\n[tool:{original}]\n"})
+                t_tool = time.time()
                 result = mcp.call_tool(
                     server,
                     payload["identity"],
@@ -133,7 +134,15 @@ def run_invoke(
                     timeout_s=timeout_s,
                     req_id=abs(hash(call_id)) % 10_000_000 or 1,
                 )
+                span_ms = round((time.time() - t_tool) * 1000, 3)
                 if "error" in result:
+                    yield sse("tool_span", {
+                        "server_name": str(server.get("name") or ""),
+                        "tool_name": original,
+                        "duration_ms": span_ms,
+                        "status": "error",
+                        "error_code": "tool_error",
+                    })
                     err = result.get("error")
                     err_text = json.dumps(err)[:800]
                     messages.append({
@@ -142,6 +151,12 @@ def run_invoke(
                         "content": err_text,
                     })
                     continue
+                yield sse("tool_span", {
+                    "server_name": str(server.get("name") or ""),
+                    "tool_name": original,
+                    "duration_ms": span_ms,
+                    "status": "ok",
+                })
                 tool_result = result.get("result") or {}
                 messages.append({
                     "role": "tool",

@@ -13,6 +13,7 @@ import {
 import { ChannelAgentsToggle } from "../local-runtime/ChannelAgentsToggle";
 import { ClientsList } from "../local-runtime/ClientsList";
 import { buildRulesFromGrants } from "../local-runtime/grants";
+import { HubAnalyticsSection } from "../local-runtime/HubAnalyticsSection";
 import { HubInfoSection } from "../local-runtime/HubInfoSection";
 import { ProfileGrantsEditor } from "../local-runtime/ProfileGrantsEditor";
 import type {
@@ -247,6 +248,8 @@ export function LocalRuntimePage({ canRead, canWrite }: Props) {
       </div>
 
       <HubInfoSection hubInfo={hubInfo} canRead={canRead} error={error} />
+
+      <HubAnalyticsSection canRead={canRead} />
 
       <section className="rounded-lg border bg-card p-4 space-y-3 text-sm">
         <ClientsList

@@ -46,6 +46,43 @@ export type ServerAccessRule = {
   allowed_tool_names: string[];
 };
 
+export type HubAnalyticsClientRow = {
+  slug: string;
+  lists: number;
+  calls: number;
+  denials: number;
+  errors: number;
+  agent_calls: number;
+  avg_duration_ms: number;
+  finops?: {
+    invocations: number;
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost: number;
+    avg_duration_ms: number;
+  };
+};
+
+export type HubAnalyticsSummary = {
+  hours: number;
+  active_clients: number;
+  clients: HubAnalyticsClientRow[];
+  totals: {
+    lists: number;
+    calls: number;
+    denials: number;
+    errors: number;
+    agent_calls: number;
+  };
+  finops?: {
+    invocations: number;
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost: number;
+    by_client: HubAnalyticsClientRow["finops"][];
+  };
+};
+
 /** Full IdP profiles (GROUP_SCOPES); not short loom:group tags. */
 export const LOOM_PROFILES = [
   "g-users-demo",

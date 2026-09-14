@@ -32,8 +32,28 @@ CREATE TABLE IF NOT EXISTS hub_session_bindings (
     mcp_client_slug TEXT NOT NULL REFERENCES hub_clients(slug) ON DELETE CASCADE,
     bound_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE IF NOT EXISTS hub_telemetry_events (
+    id BIGSERIAL PRIMARY KEY,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    event_type TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    hub_session_id TEXT,
+    mcp_client_slug TEXT,
+    subject_hash TEXT,
+    idp_groups JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tool_name TEXT,
+    original_tool TEXT,
+    server_id INT,
+    phase TEXT,
+    error_code TEXT,
+    duration_ms INT,
+    meta JSONB NOT NULL DEFAULT '{}'::jsonb
+);
 CREATE INDEX IF NOT EXISTS hub_clients_status_idx ON hub_clients (status);
 CREATE INDEX IF NOT EXISTS hub_clients_last_seen_idx ON hub_clients (last_seen_at);
+CREATE INDEX IF NOT EXISTS hub_telemetry_occurred_idx ON hub_telemetry_events (occurred_at DESC);
+CREATE INDEX IF NOT EXISTS hub_telemetry_slug_idx ON hub_telemetry_events (mcp_client_slug, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS hub_telemetry_type_idx ON hub_telemetry_events (event_type, occurred_at DESC);
 """
 
 
@@ -423,3 +443,152 @@ class PostgresHubStore:
                         )
                 conn.commit()
         return count
+
+    def touch_last_seen(self, slug: str) -> None:
+        if not slug:
+            return
+        try:
+            with self._lock:
+                with self._connect() as conn:
+                    conn.execute(
+                        "UPDATE hub_clients SET last_seen_at = %s WHERE slug = %s",
+                        (_now(), slug),
+                    )
+                    conn.commit()
+        except Exception:
+            logger.warning("touch_last_seen failed slug=%s", slug, exc_info=True)
+
+    def record_telemetry(self, event: dict[str, Any]) -> None:
+        try:
+            with self._lock:
+                with self._connect() as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO hub_telemetry_events (
+                            event_type, request_id, hub_session_id, mcp_client_slug,
+                            subject_hash, idp_groups, tool_name, original_tool,
+                            server_id, phase, error_code, duration_ms, meta
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        )
+                        """,
+                        (
+                            str(event.get("event_type") or "unknown"),
+                            str(event.get("request_id") or ""),
+                            event.get("hub_session_id"),
+                            event.get("mcp_client_slug"),
+                            event.get("subject_hash"),
+                            self._Json(list(event.get("idp_groups") or [])),
+                            event.get("tool_name"),
+                            event.get("original_tool"),
+                            event.get("server_id"),
+                            event.get("phase"),
+                            event.get("error_code"),
+                            event.get("duration_ms"),
+                            self._Json(dict(event.get("meta") or {})),
+                        ),
+                    )
+                    conn.commit()
+        except Exception:
+            logger.warning("record_telemetry failed", exc_info=True)
+
+    def analytics_summary(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]:
+        hours = max(1, min(int(hours or 24), 24 * 90))
+        params: list[Any] = [hours]
+        where = "occurred_at >= now() - (%s || ' hours')::interval"
+        if slug:
+            where += " AND mcp_client_slug = %s"
+            params.append(slug)
+        with self._lock:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT
+                      COALESCE(mcp_client_slug, '') AS slug,
+                      COUNT(*) FILTER (WHERE event_type = 'tools_list') AS lists,
+                      COUNT(*) FILTER (WHERE event_type = 'tools_call') AS calls,
+                      COUNT(*) FILTER (WHERE phase = 'denied') AS denials,
+                      COUNT(*) FILTER (WHERE phase = 'error') AS errors,
+                      COUNT(*) FILTER (
+                        WHERE event_type = 'tools_call' AND tool_name LIKE 'agent__%%'
+                      ) AS agent_calls,
+                      COALESCE(AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL), 0) AS avg_ms
+                    FROM hub_telemetry_events
+                    WHERE {where}
+                    GROUP BY 1
+                    ORDER BY calls DESC, lists DESC
+                    """,
+                    tuple(params),
+                ).fetchall()
+                active = conn.execute(
+                    """
+                    SELECT COUNT(*) AS n FROM hub_clients
+                    WHERE last_seen_at >= now() - (%s || ' hours')::interval
+                    """,
+                    (hours,),
+                ).fetchone()
+        clients = [
+            {
+                "slug": r["slug"] or "(unknown)",
+                "lists": int(r["lists"] or 0),
+                "calls": int(r["calls"] or 0),
+                "denials": int(r["denials"] or 0),
+                "errors": int(r["errors"] or 0),
+                "agent_calls": int(r["agent_calls"] or 0),
+                "avg_duration_ms": round(float(r["avg_ms"] or 0), 1),
+            }
+            for r in rows
+        ]
+        return {
+            "hours": hours,
+            "active_clients": int(active["n"] if active else 0),
+            "clients": clients,
+            "totals": {
+                "lists": sum(c["lists"] for c in clients),
+                "calls": sum(c["calls"] for c in clients),
+                "denials": sum(c["denials"] for c in clients),
+                "errors": sum(c["errors"] for c in clients),
+                "agent_calls": sum(c["agent_calls"] for c in clients),
+            },
+        }
+
+    def analytics_tools(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]:
+        hours = max(1, min(int(hours or 24), 24 * 90))
+        params: list[Any] = [hours]
+        where = "occurred_at >= now() - (%s || ' hours')::interval AND event_type = 'tools_call'"
+        if slug:
+            where += " AND mcp_client_slug = %s"
+            params.append(slug)
+        with self._lock:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT
+                      COALESCE(tool_name, '') AS tool_name,
+                      COALESCE(mcp_client_slug, '') AS slug,
+                      COUNT(*) AS calls,
+                      COUNT(*) FILTER (WHERE phase = 'denied') AS denials,
+                      COUNT(*) FILTER (WHERE phase = 'error') AS errors,
+                      COALESCE(AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL), 0) AS avg_ms
+                    FROM hub_telemetry_events
+                    WHERE {where}
+                    GROUP BY 1, 2
+                    ORDER BY calls DESC
+                    LIMIT 100
+                    """,
+                    tuple(params),
+                ).fetchall()
+        return {
+            "hours": hours,
+            "tools": [
+                {
+                    "tool_name": r["tool_name"],
+                    "slug": r["slug"] or "(unknown)",
+                    "calls": int(r["calls"] or 0),
+                    "denials": int(r["denials"] or 0),
+                    "errors": int(r["errors"] or 0),
+                    "avg_duration_ms": round(float(r["avg_ms"] or 0), 1),
+                }
+                for r in rows
+            ],
+        }

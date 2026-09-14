@@ -1,9 +1,10 @@
 # Spec 020 — Observabilidade do MCP Hub
 
-- **Status:** Rascunho
+- **Status:** Rascunho (persistência / analytics → [028](028-mcp-hub-telemetry-analytics.md))
 - **Data:** 2026-09-13
 - **Implementa:** [ADR 0007](../adr/0007-mcp-hub.md)
 - **Depende de:** [016](016-mcp-hub-contract.md), [017](017-mcp-hub-session.md), [010 — obs MCP](010-local-mcp-observability.md), [013 — obs agent-runtime](013-local-agent-runtime-observability.md)
+- **Relacionado:** [028 — Telemetria & analytics](028-mcp-hub-telemetry-analytics.md) (events PG + UI FinOps)
 
 ## 1. Princípio
 

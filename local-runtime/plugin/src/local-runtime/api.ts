@@ -1,5 +1,6 @@
 import { apiFetch } from "@/api/client";
 import type {
+  HubAnalyticsSummary,
   HubInfo,
   McpClientGrant,
   McpHubClient,
@@ -68,4 +69,8 @@ export async function deleteMcpClient(slug: string): Promise<void> {
   await apiFetch(`/api/ext/local-runtime/mcp-clients/${encodeURIComponent(slug)}`, {
     method: "DELETE",
   });
+}
+
+export async function fetchAnalyticsSummary(hours = 24): Promise<HubAnalyticsSummary> {
+  return apiFetch<HubAnalyticsSummary>(`/api/ext/local-runtime/analytics/summary?hours=${hours}`);
 }

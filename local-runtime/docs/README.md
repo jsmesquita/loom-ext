@@ -24,9 +24,10 @@ Não criar documentação nova em `docs/` na raiz do Loom.
 |-----------|----------|
 | [CHANGELOG-LOOM-FORK.md](CHANGELOG-LOOM-FORK.md) | Divergência vs upstream (paths Core) |
 | [backlog/refactoring.md](backlog/refactoring.md) | Oportunidades de refactor (aguardar Dev) |
+| [backlog/mcp-hub-telemetry-analytics-plan.md](backlog/mcp-hub-telemetry-analytics-plan.md) | Plano: telemetria MCP Clients (uso, adesão, FinOps) |
 | [backlog/local-runtime-guideline-refactor-plan.md](backlog/local-runtime-guideline-refactor-plan.md) | Plano fasado: aderência hexagonal / guidelines |
 | [adr/README.md](adr/README.md) | ADRs 0001–0013 |
-| [specs/README.md](specs/README.md) | Specs 001–027 |
+| [specs/README.md](specs/README.md) | Specs 001–028 |
 
 ## Agentes de IDE (só pointers)
 
