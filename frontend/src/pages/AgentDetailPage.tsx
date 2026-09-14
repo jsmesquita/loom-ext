@@ -8,8 +8,8 @@ import { Key, Pencil, Check, X, Wrench, Shield } from "lucide-react";
 import type { SSETokenInfo } from "@/api/types";
 import { ApprovalRequestBubble } from "@/components/ApprovalDialog";
 import { ElicitationRequestBubble } from "@/components/ElicitationDialog";
-import { fetchAllModelOptions } from "@/api/agents";
-import type { ModelOption } from "@/api/types";
+import { fetchAllModelOptions, updateLocalAgentBehavior, updateLocalAgentIntegrations } from "@/api/agents";
+import type { A2aAgent, AgentResponse, McpServer, ModelOption, SessionResponse, TagProfile } from "@/api/types";
 import { groupModels } from "@/lib/models";
 import ReactMarkdown from "react-markdown";
 import { CollapsibleJsonBlock } from "@/components/CollapsibleJsonBlock";
@@ -18,6 +18,11 @@ import { InvokePanel } from "@/components/InvokePanel";
 import { LatencySummary } from "@/components/LatencySummary";
 import { SessionTable } from "@/components/SessionTable";
 import { DeploymentPanel } from "@/components/DeploymentPanel";
+import { ResourceTagFields } from "@/components/ResourceTagFields";
+import { listTagProfiles } from "@/api/settings";
+import { listMcpServers } from "@/api/mcp";
+import { listA2aAgents } from "@/api/a2a";
+import { Input } from "@/components/ui/input";
 import { RegistryStatusBadge } from "@/components/RegistryStatusBadge";
 import { RegistryActions } from "@/components/RegistryActions";
 import { ExternalIntegrationSection } from "@/components/ExternalIntegrationSection";
@@ -25,7 +30,7 @@ import { useInvoke, sendElicitationResponse } from "@/hooks/useInvoke";
 import { useAuth } from "@/contexts/AuthContext";
 import { usesRedirectLogin } from "@/auth/providers";
 import { trackAction } from "@/api/audit";
-import type { AgentResponse, SessionResponse } from "@/api/types";
+import { toast } from "sonner";
 
 interface AgentDetailPageProps {
   agent: AgentResponse;
@@ -34,12 +39,19 @@ interface AgentDetailPageProps {
   onSelectSession: (sessionId: string) => void;
   onSessionsRefresh: () => void;
   onRedeploy?: (id: number) => Promise<void>;
-  onPatchAgent?: (id: number, updates: { description?: string | null; model_id?: string; allowed_model_ids?: string[] }) => Promise<AgentResponse>;
+  onPatchAgent?: (id: number, updates: {
+    description?: string | null;
+    model_id?: string;
+    allowed_model_ids?: string[];
+    tags?: Record<string, string>;
+  }) => Promise<AgentResponse>;
   onRefreshAgents?: () => void;
   canInvoke?: boolean;
   registryReadOnly?: boolean;
   registryEnabled?: boolean;
   userGroups?: string[];
+  groupRestriction?: string;
+  ownerRestriction?: string;
   initialTab?: "details" | "invoke";
 }
 
@@ -56,6 +68,8 @@ export function AgentDetailPage({
   registryReadOnly,
   registryEnabled = false,
   userGroups = [],
+  groupRestriction,
+  ownerRestriction,
   initialTab = "details",
 }: AgentDetailPageProps) {
   const [editingDescription, setEditingDescription] = useState(false);
@@ -203,10 +217,24 @@ export function AgentDetailPage({
                 />
               </div>
             )}
-            {!isDeployed && agent.model_id && onPatchAgent && (
+            {(agent.source === "local" || (!isDeployed && Boolean(agent.model_id))) && onPatchAgent && (
               <div className="pt-2">
                 <RegisteredAgentModelConfig agent={agent} onPatchAgent={onPatchAgent} />
               </div>
+            )}
+            {agent.source === "local" && onPatchAgent && (
+              <LocalAgentTagsSection
+                agent={agent}
+                onPatchAgent={onPatchAgent}
+                groupRestriction={groupRestriction}
+                ownerRestriction={ownerRestriction}
+              />
+            )}
+            {agent.source === "local" && onRefreshAgents && (
+              <LocalAgentBehaviorSection agent={agent} onRefreshAgents={onRefreshAgents} />
+            )}
+            {agent.source === "local" && onRefreshAgents && (
+              <LocalAgentIntegrationsSection agent={agent} onRefreshAgents={onRefreshAgents} />
             )}
           </CardContent>
         </Card>
@@ -455,6 +483,298 @@ function ToolUseBlock({ tools, isActive }: { tools: { name: string; index: numbe
       {tools.map((t, i) => (
         <div key={i} className="pl-[18px] font-medium text-foreground/70">{formatToolName(t.name)}</div>
       ))}
+    </div>
+  );
+}
+
+function matchTagProfileId(agentTags: Record<string, string> | undefined, profiles: TagProfile[]): string {
+  if (!agentTags || !profiles.length) return "";
+  let bestId = "";
+  let bestSize = -1;
+  for (const profile of profiles) {
+    const pt = profile.tags || {};
+    const keys = Object.keys(pt);
+    if (!keys.length) continue;
+    if (keys.every((k) => agentTags[k] === pt[k]) && keys.length > bestSize) {
+      bestId = profile.id.toString();
+      bestSize = keys.length;
+    }
+  }
+  return bestId;
+}
+
+function LocalAgentTagsSection({
+  agent,
+  onPatchAgent,
+  groupRestriction,
+  ownerRestriction,
+}: {
+  agent: AgentResponse;
+  onPatchAgent: (id: number, updates: { tags?: Record<string, string> }) => Promise<AgentResponse>;
+  groupRestriction?: string;
+  ownerRestriction?: string;
+}) {
+  const [tagValues, setTagValues] = useState<Record<string, string>>(agent.tags ?? {});
+  const [profileId, setProfileId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void listTagProfiles()
+      .then((profiles) => {
+        setProfileId(matchTagProfileId(agent.tags, profiles));
+      })
+      .catch(() => setProfileId(""));
+  }, [agent.id, agent.tags]);
+
+  const save = async () => {
+    const tags = Object.fromEntries(
+      Object.entries(tagValues).filter(([, v]) => typeof v === "string" && v.trim() !== ""),
+    );
+    setSaving(true);
+    try {
+      await onPatchAgent(agent.id, { tags });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="pt-3 space-y-2 border-t">
+      <ResourceTagFields
+        onChange={setTagValues}
+        profileId={profileId}
+        groupRestriction={groupRestriction}
+        ownerRestriction={ownerRestriction}
+      />
+      <div className="flex flex-wrap gap-1.5">
+        {Object.entries(agent.tags || {}).map(([key, value]) => (
+          <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+            {key.replace(/^loom:/, "")}: {value}
+          </Badge>
+        ))}
+        {!Object.keys(agent.tags || {}).length ? (
+          <span className="text-[11px] italic">No tags saved yet.</span>
+        ) : null}
+      </div>
+      <Button size="sm" className="h-6 text-xs" onClick={() => void save()} disabled={saving}>
+        Save tag profile
+      </Button>
+    </div>
+  );
+}
+
+function LocalAgentBehaviorSection({
+  agent,
+  onRefreshAgents,
+}: {
+  agent: AgentResponse;
+  onRefreshAgents: () => void;
+}) {
+  const [draft, setDraft] = useState(agent.system_prompt ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(agent.system_prompt ?? "");
+  }, [agent.id, agent.system_prompt]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updateLocalAgentBehavior(agent.id, { system_prompt: draft });
+      onRefreshAgents();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reset = async () => {
+    setSaving(true);
+    try {
+      await updateLocalAgentBehavior(agent.id, { reset_to_template: true });
+      onRefreshAgents();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="pt-3 space-y-2 border-t">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-foreground">Behavior (system prompt)</span>
+        {agent.template_id ? (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+            template: {agent.template_id}
+          </Badge>
+        ) : null}
+      </div>
+      <Textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={6}
+        className="text-xs font-mono"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" className="h-6 text-xs" onClick={() => void save()} disabled={saving}>
+          Save behavior
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 text-xs"
+          onClick={() => void reset()}
+          disabled={saving || !agent.template_id}
+        >
+          Reset to template
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function LocalAgentIntegrationsSection({
+  agent,
+  onRefreshAgents,
+}: {
+  agent: AgentResponse;
+  onRefreshAgents: () => void;
+}) {
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+  const [a2aAgents, setA2aAgents] = useState<A2aAgent[]>([]);
+  const [mcpIds, setMcpIds] = useState<number[]>(agent.mcp_server_ids ?? []);
+  const [a2aIds, setA2aIds] = useState<number[]>(agent.a2a_agent_ids ?? []);
+  const [timeoutS, setTimeoutS] = useState(String(agent.timeout_s ?? 300));
+  const [maxRounds, setMaxRounds] = useState(String(agent.max_tool_rounds ?? 20));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setMcpIds(agent.mcp_server_ids ?? []);
+    setA2aIds(agent.a2a_agent_ids ?? []);
+    setTimeoutS(String(agent.timeout_s ?? 300));
+    setMaxRounds(String(agent.max_tool_rounds ?? 20));
+  }, [agent.id, agent.mcp_server_ids, agent.a2a_agent_ids, agent.timeout_s, agent.max_tool_rounds]);
+
+  useEffect(() => {
+    void listMcpServers()
+      .then(setMcpServers)
+      .catch(() => setMcpServers([]));
+    void listA2aAgents()
+      .then(setA2aAgents)
+      .catch(() => setA2aAgents([]));
+  }, []);
+
+  const save = async () => {
+    const timeoutVal = Number(timeoutS);
+    const roundsVal = Number(maxRounds);
+    if (!Number.isFinite(timeoutVal) || timeoutVal < 5 || timeoutVal > 3600) {
+      toast.error("Timeout must be between 5 and 3600 seconds");
+      return;
+    }
+    if (!Number.isFinite(roundsVal) || roundsVal < 1 || roundsVal > 100) {
+      toast.error("Max tool rounds must be between 1 and 100");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateLocalAgentIntegrations(agent.id, {
+        mcp_server_ids: mcpIds,
+        a2a_agent_ids: a2aIds,
+        timeout_s: timeoutVal,
+        max_tool_rounds: roundsVal,
+      });
+      toast.success("Integrations saved");
+      onRefreshAgents();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save integrations");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const activeMcp = mcpServers.filter((s) => s.status !== "inactive");
+  const activeA2a = a2aAgents.filter((a) => a.status !== "inactive");
+
+  return (
+    <div className="pt-3 space-y-2 border-t">
+      <span className="text-xs font-medium text-foreground">Integrations &amp; limits</span>
+      <p className="text-[11px] text-muted-foreground">
+        MCP links apply to Chat and Hub invokes (Hub intersects profile grants). Runtime
+        limits are stored on the agent config.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">Timeout (s)</label>
+          <Input
+            className="h-7 text-xs"
+            value={timeoutS}
+            onChange={(e) => setTimeoutS(e.target.value)}
+            inputMode="numeric"
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-muted-foreground">Max tool rounds</label>
+          <Input
+            className="h-7 text-xs"
+            value={maxRounds}
+            onChange={(e) => setMaxRounds(e.target.value)}
+            inputMode="numeric"
+          />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-[11px] text-muted-foreground">MCP servers</label>
+        <div className="max-h-32 overflow-y-auto space-y-1 rounded-md border p-2">
+          {activeMcp.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground italic">No active MCP servers.</p>
+          ) : (
+            activeMcp.map((server) => (
+              <label key={server.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5"
+                  checked={mcpIds.includes(server.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setMcpIds((prev) => (prev.includes(server.id) ? prev : [...prev, server.id]));
+                    } else {
+                      setMcpIds((prev) => prev.filter((id) => id !== server.id));
+                    }
+                  }}
+                />
+                <span>{server.name}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-[11px] text-muted-foreground">A2A agents</label>
+        <div className="max-h-32 overflow-y-auto space-y-1 rounded-md border p-2">
+          {activeA2a.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground italic">No active A2A agents.</p>
+          ) : (
+            activeA2a.map((a2a) => (
+              <label key={a2a.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5"
+                  checked={a2aIds.includes(a2a.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setA2aIds((prev) => (prev.includes(a2a.id) ? prev : [...prev, a2a.id]));
+                    } else {
+                      setA2aIds((prev) => prev.filter((id) => id !== a2a.id));
+                    }
+                  }}
+                />
+                <span>{a2a.name}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </div>
+      <Button size="sm" className="h-6 text-xs" onClick={() => void save()} disabled={saving}>
+        Save integrations
+      </Button>
     </div>
   );
 }

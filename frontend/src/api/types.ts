@@ -26,6 +26,8 @@ export interface AgentResponse {
   authorizer_config: { type?: string; name?: string; pool_id?: string; discovery_url?: string; allowed_audience?: string[]; allowed_clients?: string[]; allowed_scopes?: string[] } | null;
   model_id: string | null;
   allowed_model_ids: string[];
+  template_id?: string | null;
+  system_prompt?: string | null;
   deployed_at: string | null;
   tags: Record<string, string>;
   cost_summary: {
@@ -40,6 +42,10 @@ export interface AgentResponse {
   memory_names: string[];
   mcp_names: string[];
   a2a_names: string[];
+  mcp_server_ids?: number[];
+  a2a_agent_ids?: number[];
+  timeout_s?: number | null;
+  max_tool_rounds?: number | null;
   harness_id: string | null;
   registry_record_id: string | null;
   registry_status: string | null;

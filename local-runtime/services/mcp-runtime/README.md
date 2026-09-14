@@ -11,10 +11,24 @@ Backend FastAPI
         → child stdio JSON-RPC
 ```
 
-Templates live in `local-runtime/templates/`. The client never sends `command` or `args`.
+Templates live in `local-runtime/services/mcp-runtime/templates/` (owned by this
+service). The client never sends `command` or `args`.
 
 Host port is loopback-only (`127.0.0.1:8787`). Health: `GET /health` (no auth).
 
 ```text
 make local.mcp-runtime.test
+```
+
+## Package layout (hexagonal leve)
+
+```text
+mcp-runtime/
+  templates/           # allowlist YAML (service-owned)
+  mcp_runtime/
+    domain/
+    application/
+    adapters/
+    echo_child.py      # child process for test-echo
+    __main__.py
 ```

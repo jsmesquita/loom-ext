@@ -43,6 +43,9 @@ make local.agent-runtime.test
 - Entry: `local-runtime/plugin/src/register.tsx` → `host.addExtension({…})`
 - Alias Vite / mount Docker: `@loom-ext/local-runtime` → `local-runtime/plugin`
 - `make extension.install` só valida que o entry existe (alias já resolve)
+- Ops page: `pages/LocalRuntimePage.tsx` (orchestration) + pieces under
+  `src/local-runtime/` (thin `api.ts`, Hub info, clients list, agents toggle,
+  profile grants editor)
 
 Telas novas de ops → **plugin**, não páginas novas no `frontend/src/pages` do host,
 salvo impossibilidade (ver [rules.md](rules.md)).
@@ -53,11 +56,21 @@ salvo impossibilidade (ver [rules.md](rules.md)).
 |---------|--------------|--------|
 | mcp-hub | 8790 | MCP OAuth + tools allowlist / agents |
 | mcp-runtime | (internal) | Supervisor stdio MCP |
-| agent-runtime | 8766 | Loop de agent local |
+| agent-runtime | 8766 (rede Docker; sem publish no host) | Loop de agent local — **2 réplicas** no `make local.up` (`AGENT_RUNTIME_REPLICAS`) |
 | cursor-adapter | 8765 | Provider LiteLLM `cursor-local` |
 
 Lógica de runtime, Popen, tool loop e PATs **não** vão no FastAPI do Loom nem no
 bundle do plugin.
+
+### Testes dos sidecars
+
+Cada serviço sob `local-runtime/services/{name}/tests/`:
+
+- `unit/` — domain + application com fakes
+- `adapters/` — HTTP / store / I/O
+
+Alvos Make: `local.mcp-hub.test`, `local.cursor-adapter.test`,
+`local.mcp-runtime.test`, `local.agent-runtime.test` (cada um corre unit + adapters).
 
 ## Padrões de código (fork)
 

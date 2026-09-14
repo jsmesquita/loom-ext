@@ -775,6 +775,7 @@ function AppContent() {
                   onRegister={registerAgent}
                   onDeploy={deployAgent}
                   onDeployHarness={deployHarnessAgent}
+                  onLocalCreated={fetchAgents}
                   onSelectAgent={handleSelectAgent}
                   onRefreshAgent={refreshAgent}
                   onDelete={handleDelete}
@@ -805,6 +806,8 @@ function AppContent() {
                   registryReadOnly={!effectiveHasScope("registry:write")}
                   registryEnabled={registryEnabled}
                   userGroups={viewAsUser ? (USER_GROUPS[viewAsUser] ?? []) : (user?.groups ?? [])}
+                  groupRestriction={groupRestriction}
+                  ownerRestriction={ownerRestriction}
                   initialTab={agentInitialTab}
                 />
               )}

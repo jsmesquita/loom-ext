@@ -3,10 +3,16 @@
 Visão atual do **fork** Loom + `local-runtime` (co-located).  
 Atualizar **sempre** que a arquitetura mudar — ver [rules.md](rules.md) § Manutenção desta arquitetura.
 
+**Princípio:** `local-runtime` **estende** o Loom — não substitui o data plane de
+produção. AgentCore / harness na AWS e Bedrock (no caminho AgentCore) continuam
+no desenho; sidecars locais são caminhos **adicionais** (laptop / compose), com
+o mesmo BFF como control plane. LiteLLM é o único front de modelo e aponta para
+provedores de chat (OpenAI, Anthropic, …) — **não** para Bedrock.
+
 | Nível C4 | Conteúdo |
 |----------|----------|
 | **L1 Context** | Sistema no mundo (pessoas + sistemas externos) |
-| **L2 Containers** | Processos / deployables |
+| **L2 Containers** | Processos / deployables (Core + extensão local) |
 | **L3 Components** | Peças internas dos containers críticos |
 | **Dados** | Postgres (Loom) + store Hub + IdP |
 
@@ -17,11 +23,13 @@ Não usar sintaxe `C4Context`/`C4Container`/`C4Component` (muitos previews não 
 (`MCP_HUB_*`, `AGENT_RUNTIME_*`, `LOOM_DATABASE_URL`, issuer IdP, etc.). Nada disso
 é contrato fixo da arquitetura — o diagrama descreve **papéis e relações**.
 
-Relacionados: [ADR 0006](../adr/0006-local-runtime-extension-repo.md), [overview](overview.md),
-[scalability-reliability.md](scalability-reliability.md),
+Relacionados: [ADR 0005](../adr/0005-local-agent-runtime.md),
+[ADR 0006](../adr/0006-local-runtime-extension-repo.md),
+[spec 003 LiteLLM](../specs/003-litellm-as-sole-llm-gateway.md),
+[overview](overview.md), [scalability-reliability.md](scalability-reliability.md),
 [CHANGELOG-LOOM-FORK.md](../CHANGELOG-LOOM-FORK.md).
 
-**Última revisão:** 2026-09-14 (Mermaid portátil; endpoints via env)
+**Última revisão:** 2026-09-14 (ADR 0013 templates + worker pool; templates MCP; LiteLLM ≠ Bedrock)
 
 ---
 
@@ -34,11 +42,14 @@ flowchart TB
     ADM[Admin IdP]
   end
 
-  SYS[Loom + local-runtime<br/>agents, MCP catalog, Hub, runtimes]
+  SYS[Loom + local-runtime<br/>control plane + extensões]
 
   IDP[Identity Provider<br/>OIDC / OAuth AS]
   IDE[Cursor IDE<br/>MCP client]
-  LLM[LLM providers<br/>via LiteLLM gateway]
+  AC[AWS AgentCore / Harness<br/>data plane produção]
+  BR[Amazon Bedrock<br/>modelos AgentCore]
+  LLMGW[LiteLLM gateway<br/>único front de modelo]
+  PROV[LLM providers<br/>OpenAI, Anthropic, …]
   MCPX[MCP servers externos<br/>ADO, Grafana, Rancher, …]
 
   DEV -->|HTTPS UI| SYS
@@ -47,9 +58,17 @@ flowchart TB
   SYS -->|discover JWKS token| IDP
   IDE -->|PKCE client loom-mcp-hub| IDP
   ADM --> IDP
-  SYS --> LLM
+  SYS -->|invoke deploy/harness| AC
+  SYS --> LLMGW
+  AC --> BR
+  LLMGW --> PROV
   SYS -->|tools allowlisted| MCPX
 ```
+
+AgentCore (e Bedrock no data plane AWS) e os provedores atrás do LiteLLM são
+**sistemas externos** do produto Loom. O stack `local-runtime` não os remove —
+acrescenta runtimes/MCP locais e o Hub OAuth no mesmo control plane. LiteLLM
+**não** roteia para Bedrock; Bedrock fica no caminho AgentCore.
 
 ---
 
@@ -61,18 +80,22 @@ flowchart TB
 
   subgraph LoomExt[Loom-ext deployables]
     FE[Frontend SPA<br/>Extension Host + plugin]
-    BE[Backend BFF<br/>FastAPI]
+    BE[Backend BFF<br/>FastAPI control plane]
     PG[(PostgreSQL<br/>estado Loom)]
     HUB[mcp-hub<br/>MCP resource server]
     HSTORE[(Hub store<br/>clients / grants)]
     MCPR[mcp-runtime<br/>stdio supervisor]
-    AR[agent-runtime<br/>agent loop]
+    AR[agent-runtime<br/>loop local — extensão]
     CA[cursor-adapter]
     LL[LiteLLM proxy]
     IDPL[IdP deploy<br/>ex. Keycloak ou Entra]
   end
 
+  AC[AgentCore / Harness AWS<br/>data plane produção]
+  BR[Amazon Bedrock]
+  PROV[OpenAI / Anthropic / …]
   MCPX[MCP externos]
+  CURSOR[Cursor Agent SDK]
 
   USER --> FE
   USER -->|MCP OAuth| HUB
@@ -81,16 +104,26 @@ flowchart TB
   BE -->|OIDC bootstrap / JWKS config| IDPL
   BE -->|service token| HUB
   BE -->|service token| MCPR
-  BE -->|service token| AR
+  BE -->|source=local invoke| AR
+  BE -->|source=deploy/harness invoke_agent| AC
   BE --> LL
   HUB -->|materialize / tools / agents| BE
   HUB --> HSTORE
   HUB -->|validate access_token| IDPL
   AR --> LL
   AR --> MCPR
-  LL --> CA
+  AC --> BR
+  LL --> PROV
+  LL -->|cursor-local| CA
+  CA --> CURSOR
   MCPR --> MCPX
 ```
+
+Invoke no BFF escolhe o **adapter** (`local` | `agentcore` | `harness`) — ver
+[ADR 0005](../adr/0005-local-agent-runtime.md). LiteLLM serve o **caminho local**
+(agent-runtime / BFF) com OpenAI, Anthropic e `cursor-local`
+([spec 003](../specs/003-litellm-as-sole-llm-gateway.md)). AgentCore usa
+**Bedrock** no data plane AWS — sem seta LiteLLM ↔ AgentCore neste desenho.
 
 ### Endpoints (configuráveis)
 
@@ -104,8 +137,11 @@ local de desenvolvimento; em produção use DNS/TLS e secrets store.
 | MCP Hub resource | `MCP_HUB_PUBLIC_URL` | `http://127.0.0.1:8790/mcp` |
 | Hub → BFF | `MCP_HUB_INTERNAL_URL` + `MCP_HUB_SERVICE_TOKEN` | service network |
 | mcp-runtime | `MCP_RUNTIME_URL` + `MCP_RUNTIME_TOKEN` | service network |
-| agent-runtime | `AGENT_RUNTIME_URL` + `AGENT_RUNTIME_TOKEN` | service network |
+| agent-runtime (extensão) | `AGENT_RUNTIME_URL` + `AGENT_RUNTIME_TOKEN` | service network; **pool** de réplicas ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md), [spec 027](../specs/027-local-agent-worker-pool.md)) |
+| AgentCore / harness (produção) | credenciais AWS / ARNs no BFF | conta AWS |
 | LiteLLM | discovery / proxy URL | compose service |
+| LLM backends (via LiteLLM) | config LiteLLM (OpenAI, Anthropic, …) | API keys em env/secrets |
+| Bedrock (via AgentCore) | ARNs / IAM no data plane AWS | conta AWS |
 | Postgres | `LOOM_DATABASE_URL` | compose service |
 | IdP | issuer / JWKS from `identity_providers` or env bootstrap | Keycloak ou Entra |
 
@@ -144,15 +180,19 @@ flowchart TB
   subgraph be[Backend FastAPI]
     AUTH[auth / idp ACL]
     MCPR[routers mcp* / hub proxy]
-    INV[invocations / local_invoke]
+    INV[invocations<br/>adapter: local / agentcore / harness]
     HSVC[mcp_hub* services]
     ORM[SQLAlchemy models]
   end
+  AR[agent-runtime<br/>extensão local]
+  AC[AgentCore / Harness AWS]
   MCPR --> AUTH
   MCPR --> HSVC
   HSVC --> ORM
   INV --> ORM
   INV --> AUTH
+  INV -->|source=local| AR
+  INV -->|source=deploy/harness| AC
 ```
 
 ### L3c — Frontend + plugin
@@ -162,7 +202,7 @@ flowchart LR
   subgraph fe[SPA]
     HOST[extensions host]
     PAGES[host pages<br/>Chat Agents MCP]
-    PLUG[LocalRuntimePage plugin]
+    PLUG[plugin: LocalRuntimePage + local-runtime/*]
   end
   HOST --> PLUG
   PLUG -.->|apiFetch + AuthProvider| PAGES
@@ -294,27 +334,20 @@ erDiagram
 
 | Store | Onde | Conteúdo |
 |-------|------|----------|
-| **`hub_clients.json`** | Volume `mcp-hub` (`MCP_HUB_STORE_PATH`) | Canais MCP, `agents_enabled`, profile grants, session bindings |
+| **Postgres DB `mcp_hub`** | Mesmo servidor PG do compose; DSN `MCP_HUB_DATABASE_URL` | Canais MCP, `agents_enabled`, profile grants, session bindings (`hub_clients`, `hub_session_bindings`) |
+| **JSON fallback** | `MCP_HUB_STORE_PATH` (só se DSN unset; ou fonte de migrate) | Snapshot legado |
 | **Keycloak DB** | Container Keycloak | Realm `loom`, users/groups, client `loom-mcp-hub` |
-| **Templates YAML** | `local-runtime/templates/` (ro no mcp-runtime) | Allowlist de servers stdio — arquivos, não SQL |
+| **Templates YAML** | `local-runtime/services/mcp-runtime/templates/` (ro no container) | Allowlist stdio — dono: **mcp-runtime** |
 
-#### JSON Hub (**local-runtime** only)
+#### Hub store schema (Postgres `mcp_hub`)
 
 ```text
-{
-  "version": 1,
-  "clients": {
-    "<slug>": {
-      "slug", "status", "agents_enabled",
-      "declared_*", "display_name",
-      "profile_grants": { "<idp-group>": [ { server_id, access_level, tool_names } ] }
-    }
-  },
-  "session_bindings": { ... }
-}
+hub_clients(slug PK, display_name, declared_*, status, agents_enabled, grants JSONB, first_seen_at, last_seen_at)
+hub_session_bindings(hub_session_id PK, mcp_client_slug FK, bound_at)
 ```
 
-Não misturar este JSON com migrations do Postgres.
+Init: `etc/docker/postgres-init/02-mcp-hub-db.sql` (volume Postgres **novo**).  
+Não misturar com schema/ORM do Loom Core.
 
 ---
 
@@ -322,17 +355,19 @@ Não misturar este JSON com migrations do Postgres.
 
 | Conceito | Origem | Liga a |
 |----------|--------|--------|
-| `profile_grants[].server_id` | **local-runtime** JSON | **Core** `mcp_servers.id` |
-| `agents_enabled` | **local-runtime** JSON | **Core** `agents` + RBAC tags (invoke via BFF) |
-| Runs `agent__*` | BFF cria **Core** `invocation_sessions` / `invocations` | — |
+| `profile_grants[].server_id` | **local-runtime** Hub PG | **Core** `mcp_servers.id` |
+| `agents_enabled` | **local-runtime** Hub PG | **Core** `agents` + RBAC tags (invoke via BFF) |
+| Runs `agent__*` / Chat invoke | BFF cria **Core** `invocation_sessions` / `invocations` | Adapter **local** → agent-runtime; **deploy/harness** → AgentCore (produção) |
+| Modelo LLM | LiteLLM (único gateway do control plane) | OpenAI / Anthropic / …; `cursor-local` → cursor-adapter. Bedrock → AgentCore |
 | IdP ativo | **Fork (PG)** `identity_providers` | Keycloak/Entra (**local-runtime** / SaaS) |
-| Template stdio | **Fork** colunas em `mcp_servers` | **local-runtime** YAML + mcp-runtime |
+| Template stdio | **Fork** colunas em `mcp_servers` | **mcp-runtime** YAML allowlist |
+| Template agent local | **Extension** YAML (`agent-runtime/templates/`, [spec 026](../specs/026-local-agent-templates.md)); loader `yaml_agent_templates` | `agents.source=local` + escopo materializado no invoke ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md)) |
 
 ```text
                     ┌──────────────────────────┐
                     │  local-runtime           │
-                    │  hub_clients.json        │
-                    │  templates/*.yaml        │
+                    │  Postgres DB mcp_hub     │
+                    │  mcp-runtime/templates/*.yaml │
                     │  Keycloak (realm)        │
                     └────────────┬─────────────┘
                                  │ server_id / OAuth

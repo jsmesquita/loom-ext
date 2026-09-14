@@ -26,8 +26,8 @@
 | **Docs** | `local-runtime/docs/**` (ADRs, specs, guias, este changelog) | Baixo — fora do Loom; raiz `docs/` do fork removida |
 | **Config** | `etc/docker/**`, `.env.example`, realm Keycloak, LiteLLM local | Médio — stack local do fork |
 
-**Baseline de comparação:** `main` alinhada a `upstream/main`.  
-**Branch de trabalho tipica:** `feat/keycloak-idp-abstraction` e derivadas.
+**Baseline de comparação:** `main` do fork (`origin/main`).  
+**Branch de planejamento (refactor guidelines):** `plan/local-runtime-guideline-refactor`.
 
 **Instruções de agentes:** hub [`README.md`](README.md) → [`guide/rules.md`](guide/rules.md) →
 guias em [`guide/`](guide/). Pointers: Cursor
@@ -74,6 +74,149 @@ Checklist pós-merge:
 ---
 
 ## Registro
+
+### 2026-09-14 — Local agents: MCP/A2A persistidos + limits + Hub ∩ grants
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Core** | `backend` `local_agent_mcp.py`, `local_agents.py`, `local_invoke.py`, `mcp_hub*`, `invocations.py`, `agents.py` | Links MCP/A2A + `options` no config; Hub invoke passa grants; Chat fallback aos MCPs linkados; AgentResponse expõe ids/limits |
+| **Core** | `frontend` create + Detail | Allowed models, MCP, A2A, timeout / max_tool_rounds; Detail: Save integrations |
+| **Extension** | `mcp-hub` ports / loom_http / tools | `agents_invoke` envia `hub_server_ids` + `hub_tool_allowlists` |
+
+### 2026-09-14 — Local agents: tag profile + model no create/Detail
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Core** | `backend/app/routers/local_agents.py` | Create aceita `model_id` / `allowed_model_ids` (+ `tags` já previsto) |
+| **Core** | `backend/app/routers/agents.py` | `PATCH /api/agents/{id}` aceita `tags`; validação de model relaxada para `source=local`; sync `allowed_model_ids` no `AGENT_CONFIG_JSON` |
+| **Core** | `frontend` `LocalAgentCreateForm`, `AgentListPage`, `AgentDetailPage`, `App`, `api/agents`, `hooks/useAgents` | Create: seletor LiteLLM + `ResourceTagFields`; Detail local: Model Configuration + Save tag profile |
+
+### 2026-09-14 — A2: create/edit local agents from templates
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Core** | `backend/app/routers/local_agents.py`, `services/local_agent_templates.py`, `main.py` | Ok Dev: BFF create/list/behavior; proxy materialize no agent-runtime |
+| **Core** | `frontend` Agents Local tab + Detail behavior | Create com `params.objective`; reset to template |
+| **Extension** | `templates/assistente-local.yaml` | Template genérico (substitui exemplo guia-biblioteca) |
+
+### 2026-09-14 — A1: agent templates loader
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Extension** | `services/agent-runtime/templates/`, `domain/agent_template.py`, `adapters/outbound/yaml_agent_templates.py` | Spec 026 allowlist + materialize config |
+| **Extension** | compose mount `AGENT_TEMPLATES_DIR`, Dockerfile `COPY templates` | |
+
+### 2026-09-14 — ADR 0013 + specs 026/027 (templates + worker pool)
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Docs** | `adr/0013-…`, `specs/026-…`, `specs/027-…` | Agents locais por template; pool agnóstico; dual path AgentCore; K8s-ready |
+| **Docs** | `architecture.md`, índices ADR/specs | Ponteiros ao desenho |
+
+### 2026-09-14 — agent-runtime: 2 réplicas no compose (pool)
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Extension** | `compose/overlay.yml`, `makefile` | Pool de workers: sem porta no host; `make local.up` sobe `--scale agent-runtime=2` (`AGENT_RUNTIME_REPLICAS`) |
+
+### 2026-09-14 — agent-runtime SSE fecha conexão após invoke
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Extension** | `services/agent-runtime/.../adapters/inbound/http_app.py` | `/v1/invoke` SSE: `Connection: close` + `close_connection=True` para o BFF/Hub não ficarem em `streaming` após `session_end` |
+
+### 2026-09-14 — mcp-runtime owns templates/
+
+| Campo | Valor |
+|-------|--------|
+| **Zona** | **Extension** (+ comentário **Core** path sync) |
+| **Motivação** | Allowlist YAML é do supervisor stdio — não asset compartilhado na raiz de `local-runtime/` |
+| **Core** | `backend/app/services/mcp_templates.py` — comentário de sync → novo path (sem lógica) |
+| **Extension** | `services/mcp-runtime/templates/*.yaml`; compose mount; Dockerfile `COPY templates`; default `templates_dir()` |
+| **Docs** | architecture, rules, overview, ADR 0004/0006, READMEs |
+| **Risco sync** | Baixo |
+
+### 2026-09-14 — cursor-adapter hexagonal (REF-05)
+
+**Contexto:** isolar translation/planner do SDK Cursor.
+
+| Zona | Paths | O que mudou |
+|------|-------|-------------|
+| **Extension** | `services/cursor-adapter/cursor_adapter/{domain,application,adapters}/` | Ports + use case chat |
+| **Docs** | backlog REF-05 done | |
+
+**Impacto no sync upstream:** baixo.
+
+---
+
+### 2026-09-14 — mcp-runtime hexagonal leve (REF-04)
+
+**Contexto:** alinhar supervisor stdio ao layout ports/adapters.
+
+| Zona | Paths | O que mudou |
+|------|-------|-------------|
+| **Extension** | `services/mcp-runtime/mcp_runtime/{domain,application,adapters}/` | ProcessSupervisor + outbound YAML/stdio/secrets |
+| **Docs** | backlog REF-04 done | |
+
+**Impacto no sync upstream:** baixo.
+
+---
+
+### 2026-09-14 — agent-runtime hexagonal (REF-03)
+
+**Contexto:** mesma disciplina do Hub — domain/application/adapters.
+
+| Zona | Paths | O que mudou |
+|------|-------|-------------|
+| **Extension** | `services/agent-runtime/agent_runtime/{domain,application,adapters}/` | Ports LLM/MCP/Session + use case invoke |
+| **Docs** | backlog REF-03 done, plano Fase 3 | |
+
+**Impacto no sync upstream:** baixo.
+
+---
+
+### 2026-09-14 — Hub store Postgres (REF-01)
+
+**Contexto:** paridade produção; port `HubStore` + DB dedicado.
+
+| Zona | Paths | O que mudou |
+|------|-------|-------------|
+| **Extension** | `mcp_hub/adapters/outbound/pg_store.py`, `wiring.py` | `PostgresHubStore` + migrate JSON |
+| **Config** | `compose/overlay.yml`, `postgres-init/02-mcp-hub-db.sql`, `.env.example` | DSN `mcp_hub` |
+| **Docs** | architecture, backlog REF-01/02 done | |
+
+**Impacto no sync upstream:** baixo (init SQL sob `etc/docker/`).
+
+---
+
+### 2026-09-14 — mcp-hub hexagonal strangler (REF-02)
+
+**Contexto:** decisões do plano aceitas; primeira fatia de layout ports/adapters.
+
+| Zona | Paths | O que mudou |
+|------|-------|-------------|
+| **Extension** | `services/mcp-hub/mcp_hub/{domain,application,adapters}/` | Layout hexagonal + ports + FileHubStore/Loom/OAuth classes |
+| **Extension** | `application/use_cases/{session_allowlist,tools}.py` | Use cases + DI em `serve()` / `HubHandler` |
+| **Extension** | shims `access.py`…`http_app.py` | Compat de imports |
+| **Docs** | plano / backlog REF-02 | Fase 1 itens 1–8 |
+
+**Impacto no sync upstream:** baixo.
+
+---
+
+### 2026-09-14 — Plano de refactor local-runtime × guidelines
+
+**Contexto:** iniciar planejamento (sem código) para aderência hexagonal / SOLID.
+
+| Zona | Paths | O que mudou |
+|------|-------|-------------|
+| **Docs** | `backlog/local-runtime-guideline-refactor-plan.md` | Plano fasado 0–6 |
+| **Docs** | `backlog/refactoring.md` | REF-02…06 |
+| **Docs** | `README.md`, este changelog | Links / baseline fork |
+
+**Impacto no sync upstream:** baixo.
+
+---
 
 ### 2026-09-14 — Guia Python best practices (hexagonal alvo)
 
@@ -320,7 +463,7 @@ estrutura hexagonal para sidecars — **sem** refatorar código existente.
 | Zona | Paths (principais) | O que mudou |
 |------|--------------------|-------------|
 | **Core** | `backend/.../mcp.py`, `mcp_access.py`, `mcp_templates.py`, `mcp_runtime_client.py`, forms/pages MCP no frontend | Catalog, access, deploy path para stdio |
-| **Extension** | `local-runtime/services/mcp-runtime/**`, `templates/*.yaml` | Supervisor stdio + templates |
+| **Extension** | `local-runtime/services/mcp-runtime/**` (incl. `templates/*.yaml`) | Supervisor stdio + templates |
 | **Docs** | ADR 0004, specs 005–010, 015 *(legado)* | |
 
 ---

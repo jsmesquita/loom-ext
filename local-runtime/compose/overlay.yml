@@ -61,13 +61,13 @@ services:
       MCP_RUNTIME_HOST: 0.0.0.0
       MCP_RUNTIME_PORT: "8787"
       MCP_RUNTIME_TOKEN: ${MCP_RUNTIME_TOKEN:-loom-mcp-runtime-local}
-      MCP_TEMPLATES_DIR: /templates
+      MCP_TEMPLATES_DIR: /app/templates
       AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT:-}
       GRAFANA_SERVICE_ACCOUNT_TOKEN: ${GRAFANA_SERVICE_ACCOUNT_TOKEN:-}
       RANCHER_MCP_RANCHER_TOKEN: ${RANCHER_MCP_RANCHER_TOKEN:-}
       RANCHER_MCP_TLS_INSECURE: ${RANCHER_MCP_TLS_INSECURE:-}
     volumes:
-      - ./local-runtime/templates:/templates:ro
+      - ./local-runtime/services/mcp-runtime/templates:/app/templates:ro
     ports:
       - "127.0.0.1:8787:8787"
     healthcheck:
@@ -83,6 +83,9 @@ services:
       retries: 12
       start_period: 15s
 
+  # Pool of generic workers (ADR 0005). Backend uses http://agent-runtime:8766
+  # (Compose DNS round-robin). No host port publish — required to scale without
+  # clashing on 127.0.0.1:8766. Override count: AGENT_RUNTIME_REPLICAS (make local.up).
   agent-runtime:
     build:
       context: ./local-runtime/services/agent-runtime
@@ -97,11 +100,12 @@ services:
       AGENT_RUNTIME_PORT: "8766"
       AGENT_RUNTIME_TOKEN: ${AGENT_RUNTIME_TOKEN:-loom-agent-runtime-local}
       AGENT_RUNTIME_MAX_SESSIONS: ${AGENT_RUNTIME_MAX_SESSIONS:-4}
+      AGENT_TEMPLATES_DIR: /app/templates
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-loom-local-dev}
       MCP_RUNTIME_TOKEN: ${MCP_RUNTIME_TOKEN:-loom-mcp-runtime-local}
-    ports:
-      - "127.0.0.1:8766:8766"
+    volumes:
+      - ./local-runtime/services/agent-runtime/templates:/app/templates:ro
     healthcheck:
       test:
         [
@@ -120,13 +124,21 @@ services:
       context: ./local-runtime/services/mcp-hub
     restart: unless-stopped
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
     environment:
       MCP_HUB_HOST: 0.0.0.0
       MCP_HUB_PORT: "8790"
       MCP_HUB_SERVICE_TOKEN: ${MCP_HUB_SERVICE_TOKEN:-loom-mcp-hub-local}
       LOOM_BACKEND_URL: http://backend:8000
+      # Dedicated DB on shared Postgres (not Loom schema). Init: etc/docker/postgres-init/02-mcp-hub-db.sql
+      MCP_HUB_DATABASE_URL: ${MCP_HUB_DATABASE_URL:-postgresql://mcp_hub:mcp-hub-local-dev@postgres:5432/mcp_hub}
+      # Optional leftover JSON path; auto-imported only when PG has zero clients
       MCP_HUB_STORE_PATH: /data/hub_clients.json
+      # Set to "force" to re-import JSON over PG (rare)
+      MCP_HUB_MIGRATE_JSON: ${MCP_HUB_MIGRATE_JSON:-}
       MCP_HUB_RESOURCE: ${MCP_HUB_PUBLIC_URL:-http://127.0.0.1:8790/mcp}
       MCP_HUB_PUBLIC_BASE: http://127.0.0.1:8790
       # Token iss is browser hostname; JWKS fetched on Docker network.
