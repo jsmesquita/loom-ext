@@ -40,7 +40,7 @@ guias em [`guide/`](guide/). Pointers: Cursor
 | Área | Situação no fork | Notas para rebase |
 |------|------------------|-------------------|
 | IdP ACL (`backend/app/idp/`, auth, settings IdP) | **Core** grande | Conflitos prováveis em `auth.py`, `main.py`, routers |
-| MCP catalog / stdio / access | **Core** + templates na extension | Conferir `mcp.py`, `mcp_access.py`, forms |
+| MCP catalog | **Core** alinhado upstream (sse / streamable_http) | Sem stdio/`MCP_RUNTIME_URL`; hosts na extension ([ADR 0014](adr/0014-mcp-host-isolated-http-registration.md)) |
 | Invoke local / Orientador / LiteLLM | **Core** (`local_invoke`, `local_agents`) + LiteLLM em `etc/` + agent-runtime na extension | `invocations.py` / `local_invoke.py` sensíveis |
 | Extension Host UI | **Core** fino (`frontend/src/extensions/*`, `App.tsx`, vite alias) | Manter host estável (ADR 0006) |
 | Hub MCP (OAuth, clients, agents-as-tools) | **Core** BFF (`mcp_hub*`) + **Extension** sidecar `mcp-hub` + plugin Local runtime | BFF no Loom; data plane fora; telemetria Spec 028 em DB `mcp_hub` + attributions Core |
@@ -74,6 +74,84 @@ Checklist pós-merge:
 ---
 
 ## Registro
+
+### 2026-09-15 — Varredura: resíduos mcp-runtime no Core
+
+| | |
+|--|--|
+| **Zona** | Core + fork sob `backend/` |
+| **Removido** | enrich `MCP_RUNTIME_TOKEN` / `service_bearer`; guard `stdio` no Hub; comentários compose |
+| **Já deleted** | `mcp_runtime_client.py`, `mcp_templates.py`, `test_mcp_runtime.py` |
+| **Mantido (fork)** | `db.py` DROP colunas stdio legadas; BYO/`local_invoke`/Hub (não são mcp-runtime) |
+
+### 2026-09-15 — mcp-* lateral trust (sem bearer; Core intacto)
+
+| | |
+|--|--|
+| **Zona** | **Extension** (`mcp-runtime` HTTP) |
+| **Ok Dev** | Sim |
+| **Motivo** | Evitar patch Core para Refresh Tools; rede Docker / loopback é a fronteira |
+| **Fix** | Auth off por default; opt-in `MCP_RUNTIME_REQUIRE_AUTH=1` |
+| **Core** | Revertido inject de `MCP_RUNTIME_TOKEN` em `services/mcp.py` |
+
+### 2026-09-15 — Docs: architecture + specs alinhados a ADR 0014
+
+| | |
+|--|--|
+| **Zona** | **Docs** |
+| **Ok Dev** | Sim |
+| **Docs** | `architecture.md` L2/dados; ADR 0004 superseded; specs 006–016/015/011/012/014; índices |
+
+### 2026-09-15 — Limpeza residual stdio / hosted / auth loom
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Extension** + **Docs** |
+| **Ok Dev** | Sim — “Pode seguir” nos residuais |
+| **Core** | Sem `mcp_runtime_client`; sem branches stdio/loom; Hub tool call só HTTP |
+| **Extension** | mcp-runtime só `TEMPLATE=` + `/mcp` (removidos hosted `/h` `/s` register API) |
+| **Plugin** | Label MCP sem `template_id` |
+
+### 2026-09-15 — Remoção residual do mint Hub (`mcp_hub_sessions`)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Docs** |
+| **Ok Dev** | Sim — limpar mint |
+| **Core** | Removidos model/funções/rotas mint; `DROP TABLE mcp_hub_sessions` |
+| **Docs** | architecture L4 |
+| **Mantido** | rejeição `hs_…` no sidecar oauth (fail-closed) |
+
+### 2026-09-15 — Loom sem mcp-runtime (só formulário HTTP)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Extension** + **Docs** |
+| **Ok Dev** | Sim — “Loom deixa de conhecer o mcp-runtime” / limpar modelo |
+| **Core** | Sem stdio/templates/`MCP_RUNTIME_URL`; DROP `mcp_servers.template_*` / `secret_refs` / `runtime_state`; stub `ensure_stdio_ready` só p/ import Hub |
+| **Extension** | Overlay: só `mcp-*` com `TEMPLATE=` |
+| **Docs** | ADR 0014, guia registro, architecture L2/L4 |
+| **Fora de escopo** | mcp-hub features (só `server_slug` usa `name`) |
+
+### 2026-09-15 — ADR 0014 v2: TEMPLATE= / serviço por MCP
+
+| | |
+|--|--|
+| **Zona** | **Extension** + **Docs** |
+| **Ok Dev** | Sim — desenho TEMPLATE= + `/mcp` |
+| **Extension** | `TEMPLATE` → boot single + `POST /mcp`; overlay: `mcp-azure-devops`, `mcp-rancher`, `mcp-grafana` |
+| **Docs** | ADR 0014, guia `mcp-host-http-registration.md` |
+| **Core** | (superseded pela entrada acima) |
+
+### 2026-09-15 — ADR 0014: MCP host isolado (hosted HTTP)
+
+| | |
+|--|--|
+| **Zona** | **Extension** + **Docs** |
+| **Ok Dev** | Sim — “Loom o mais isolado possível” |
+| **Extension** | `mcp-runtime` `hosted/servers.yaml`, boot auto, `GET /hosted`, `/h/{slug}/mcp` (legado all-in-one) |
+| **Docs** | ADR 0014, guia `mcp-host-http-registration.md`; backlog REF-2026-09-15-01 (remover stdio Core) |
+| **Core** | Sem remoção nesta fase — path stdio legado permanece |
 
 ### 2026-09-15 — Rename `source=local` → `source=external` (UI: BYO agent)
 

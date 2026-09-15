@@ -67,8 +67,16 @@ def _uses_litellm_mock(agent: Agent, runtime_model_id: str | None = None) -> boo
         return False
 
 
-def mcp_runtime_token() -> str:
-    return os.getenv("MCP_RUNTIME_TOKEN", "").strip()
+def enrich_mcp_servers_for_runtime(servers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Normalize MCP entries for agent-runtime. Never attach the user JWT."""
+    enriched: list[dict[str, Any]] = []
+    for server in servers or []:
+        entry = dict(server)
+        auth = entry.get("auth")
+        if isinstance(auth, dict) and auth:
+            entry["auth"] = dict(auth)
+        enriched.append(entry)
+    return enriched
 
 
 def _agent_config(agent: Agent) -> dict[str, Any]:
@@ -139,27 +147,6 @@ def extract_completion_text(payload: dict[str, Any]) -> str | None:
     if isinstance(text, str) and text:
         return text
     return None
-
-
-def enrich_mcp_servers_for_runtime(servers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """Attach service bearer for mcp-runtime facades; never send user JWT."""
-    token = mcp_runtime_token()
-    enriched: list[dict[str, Any]] = []
-    for server in servers or []:
-        entry = dict(server)
-        auth = dict(entry.get("auth") or {})
-        url = str(entry.get("endpoint_url") or "")
-        auth_type = (auth.get("type") or "").lower()
-        needs_runtime_token = (
-            "mcp-runtime" in url
-            or auth_type in ("service_bearer", "loom")
-        )
-        if needs_runtime_token and token:
-            entry["auth"] = {"type": "service_bearer", "token": token}
-        elif auth:
-            entry["auth"] = auth
-        enriched.append(entry)
-    return enriched
 
 
 async def stream_litellm_text(

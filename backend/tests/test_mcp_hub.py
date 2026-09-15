@@ -66,17 +66,17 @@ class TestMcpHub(unittest.TestCase):
         self.assertEqual(body["auth"], "oauth")
         self.assertTrue(body["mcp_hub_url"].endswith("/mcp"))
 
-    def test_mint_endpoints_gone(self):
-        self.assertEqual(self.client.post("/api/mcp/hub/sessions", json={}).status_code, 410)
+    def test_mint_routes_absent(self):
+        self.assertEqual(self.client.post("/api/mcp/hub/sessions", json={}).status_code, 404)
         self.assertEqual(
             self.client.post(
                 "/api/mcp/hub/sessions/introspect",
                 headers={"Authorization": "Bearer test-hub-token"},
                 json={"hub_session_token": "hs_x"},
             ).status_code,
-            410,
+            404,
         )
-        self.assertEqual(self.client.delete("/api/mcp/hub/sessions/any").status_code, 410)
+        self.assertEqual(self.client.delete("/api/mcp/hub/sessions/any").status_code, 404)
 
     def test_service_endpoints_fail_closed_without_token(self):
         os.environ["MCP_HUB_SERVICE_TOKEN"] = ""
@@ -127,9 +127,8 @@ class TestMcpHub(unittest.TestCase):
     def test_materialize_from_grants_enabled(self):
         server = McpServer(
             name="Grafana",
-            endpoint_url="http://mcp-runtime:8787/s/1/mcp",
-            transport_type="stdio",
-            template_id="grafana",
+            endpoint_url="http://mcp-grafana:8787/mcp",
+            transport_type="streamable_http",
             status="active",
         )
         self.session.add(server)

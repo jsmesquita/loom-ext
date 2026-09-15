@@ -1,13 +1,10 @@
-﻿"""MCP Hub control-plane helpers (ADR 0007, specs 016-019)."""
+﻿"""MCP Hub control-plane helpers (ADR 0007, specs 016-019). OAuth era — no mint."""
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
-import secrets
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -15,18 +12,11 @@ from sqlalchemy.orm import Session
 from app.dependencies.auth import UserInfo
 from app.models.agent import Agent
 from app.models.mcp import McpServer, McpServerAccess, McpTool
-from app.models.mcp_hub import McpHubSession
 from app.services.mcp import invoke_mcp_tool
 from app.services.mcp_access import allowed_tool_names, get_access_rule
-from app.services.mcp_runtime_client import ensure_stdio_ready
 
 CONTRACT_VERSION = "2026-09-hub-1"
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
-
-
-def hub_session_ttl_s() -> int:
-    raw = int(os.getenv("MCP_HUB_SESSION_TTL_S", str(8 * 3600)))
-    return max(60, min(raw, 24 * 3600))
 
 
 def hub_public_url() -> str:
@@ -35,82 +25,6 @@ def hub_public_url() -> str:
 
 def hub_service_token() -> str:
     return os.environ.get("MCP_HUB_SERVICE_TOKEN", "").strip()
-
-
-def hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def mint_session(db: Session, user: UserInfo, client_label: str | None = None) -> dict[str, Any]:
-    token = "hs_" + secrets.token_urlsafe(32)
-    session_id = str(uuid.uuid4())
-    now = datetime.utcnow()
-    expires = now + timedelta(seconds=hub_session_ttl_s())
-    row = McpHubSession(
-        id=session_id,
-        token_hash=hash_token(token),
-        subject=user.sub,
-        idp_type=user.idp_type or "unknown",
-        scopes_json=json.dumps(sorted(user.scopes or [])),
-        groups_json=json.dumps(list(user.groups or [])),
-        created_at=now,
-        expires_at=expires,
-        client_label=client_label,
-    )
-    db.add(row)
-    db.commit()
-    return {
-        "hub_session_token": token,
-        "hub_session_id": session_id,
-        "mcp_hub_url": hub_public_url(),
-        "expires_at": _iso_z(expires),
-        "contract_version": CONTRACT_VERSION,
-    }
-
-
-def introspect_token(db: Session, token: str) -> dict[str, Any]:
-    if not token or not token.startswith("hs_"):
-        return {"active": False}
-    row = db.query(McpHubSession).filter(McpHubSession.token_hash == hash_token(token)).first()
-    if row is None or row.revoked_at is not None:
-        return {"active": False}
-    if row.expires_at <= datetime.utcnow():
-        return {"active": False}
-    scopes: list[str] = []
-    if row.scopes_json:
-        try:
-            scopes = list(json.loads(row.scopes_json))
-        except json.JSONDecodeError:
-            scopes = []
-    groups: list[str] = []
-    if row.groups_json:
-        try:
-            groups = list(json.loads(row.groups_json))
-        except json.JSONDecodeError:
-            groups = []
-    return {
-        "active": True,
-        "hub_session_id": row.id,
-        "subject": row.subject,
-        "idp_type": row.idp_type,
-        "scopes": scopes,
-        "groups": groups,
-        "expires_at": _iso_z(row.expires_at),
-    }
-
-
-def revoke_session(db: Session, session_id: str, user: UserInfo) -> bool:
-    row = db.query(McpHubSession).filter(McpHubSession.id == session_id).first()
-    if row is None or row.subject != user.sub:
-        return False
-    if row.revoked_at is None:
-        row.revoked_at = datetime.utcnow()
-        db.commit()
-    return True
-
-
-def get_session(db: Session, session_id: str) -> McpHubSession | None:
-    return db.query(McpHubSession).filter(McpHubSession.id == session_id).first()
 
 
 def user_can_invoke_agent(user: UserInfo, agent: Agent) -> bool:
@@ -130,7 +44,7 @@ def user_can_invoke_agent(user: UserInfo, agent: Agent) -> bool:
 
 
 def server_slug(server: McpServer) -> str:
-    raw = (server.template_id or server.name or f"server-{server.id}").lower()
+    raw = (server.name or f"server-{server.id}").lower()
     slug = _SLUG_RE.sub("-", raw).strip("-")
     return slug or f"server-{server.id}"
 
@@ -167,7 +81,7 @@ def _entries_from_server_tools(
                 })
         if not tools:
             continue
-        transport = "streamable_http" if server.transport_type == "stdio" else server.transport_type
+        transport = server.transport_type
         entries.append({
             "server_id": server.id,
             "server_slug": server_slug(server),
@@ -320,11 +234,6 @@ def call_hub_tool(
     server = db.query(McpServer).filter(McpServer.id == resolved_server_id).first()
     if server is None:
         return {"success": False, "error": "server_not_found", "denied": True}
-    if server.transport_type == "stdio":
-        try:
-            ensure_stdio_ready(server)
-        except Exception:
-            return {"success": False, "error": "stdio_not_ready", "denied": False}
     return invoke_mcp_tool(server, original, arguments or {})
 
 
@@ -339,38 +248,6 @@ def _subject_still_allows(db: Session, user: UserInfo, server_id: int, tool_name
         if names is None or tool_name in names:
             return True
     return False
-
-
-def user_from_hub_session(db: Session, session_id: str) -> UserInfo | None:
-    row = get_session(db, session_id)
-    if row is None or row.revoked_at is not None:
-        return None
-    if row.expires_at <= datetime.utcnow():
-        return None
-    scopes: set[str] = set()
-    if row.scopes_json:
-        try:
-            scopes = set(json.loads(row.scopes_json))
-        except json.JSONDecodeError:
-            scopes = set()
-    groups: list[str] = []
-    if row.groups_json:
-        try:
-            groups = list(json.loads(row.groups_json))
-        except json.JSONDecodeError:
-            groups = []
-    if not groups:
-        if "admin:write" in scopes:
-            groups = ["t-admin", "g-admins-super"]
-        elif "invoke" in scopes:
-            groups = ["t-user", "g-users-demo"]
-    return UserInfo(
-        sub=row.subject,
-        username=row.subject,
-        groups=groups,
-        scopes=scopes,
-        idp_type=row.idp_type,
-    )
 
 
 def _iso_z(value: datetime) -> str:

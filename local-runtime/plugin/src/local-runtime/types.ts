@@ -31,7 +31,6 @@ export type McpServer = {
   id: number;
   name: string;
   status: string;
-  template_id?: string | null;
 };
 
 export type McpTool = {

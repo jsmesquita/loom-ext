@@ -35,6 +35,5 @@ export function buildRulesFromGrants(
 export function serverLabel(servers: McpServer[], serverId: number): string {
   const s = servers.find((x) => x.id === serverId);
   if (!s) return `Server #${serverId}`;
-  const suffix = s.template_id ? ` · ${s.template_id}` : "";
-  return `${s.name}${suffix}`;
+  return s.name;
 }

@@ -57,7 +57,7 @@ salvo impossibilidade (ver [rules.md](rules.md)).
 | Serviço | Porta típica | Função |
 |---------|--------------|--------|
 | mcp-hub | 8790 | MCP OAuth + tools allowlist / agents |
-| mcp-runtime | (internal) | Supervisor stdio MCP |
+| mcp-azure-devops / mcp-rancher / mcp-grafana | 8787 (rede); host debug 8788/8789/8791 | Host MCP `TEMPLATE=` → `/mcp` |
 | agent-runtime | 8766 (rede Docker; sem publish no host) | Loop de agent local — **2 réplicas** no `make local.up` (`AGENT_RUNTIME_REPLICAS`) |
 | cursor-adapter | 8765 | Provider LiteLLM `cursor-local` |
 

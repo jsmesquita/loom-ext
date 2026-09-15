@@ -1602,45 +1602,16 @@ async def invoke_agent_endpoint(
 
         for server in mcp_records:
             rule = require_access_or_403(db, server.id, agent.id)
-            if server.transport_type == "stdio" and not is_local_agent(agent):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Stdio MCP cannot be used with AgentCore agents: {server.name}",
-                )
-            endpoint_url = server.endpoint_url
-            if server.transport_type == "stdio" and is_local_agent(agent):
-                # mcp-runtime is in-memory; after recreate the facade 404s until
-                # register+start. Control plane must provision before agent-runtime.
-                from app.services.mcp_runtime_client import (
-                    McpRuntimeError,
-                    ensure_stdio_ready,
-                    facade_url,
-                    stdio_user_message,
-                )
-                try:
-                    ensure_stdio_ready(server)
-                except McpRuntimeError as exc:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=stdio_user_message(exc),
-                    ) from exc
-                endpoint_url = facade_url(int(server.id))
-                if server.endpoint_url != endpoint_url:
-                    server.endpoint_url = endpoint_url
-                    db.commit()
             entry: dict[str, Any] = {
                 "name": server.name,
                 "enabled": True,
-                "transport": "streamable_http" if server.transport_type == "stdio" else server.transport_type,
-                "endpoint_url": endpoint_url,
+                "transport": server.transport_type,
+                "endpoint_url": server.endpoint_url,
             }
             selected = allowed_tool_names(rule)
             if selected is not None:
                 entry["allowed_tools"] = selected
-            if server.transport_type == "stdio" or server.auth_type == "loom":
-                # Service token is injected by local_invoke.enrich_mcp_servers_for_runtime
-                entry["auth"] = {"type": "service_bearer"}
-            elif server.auth_type == "api_key":
+            if server.auth_type == "api_key":
                 # Per-user keys are stored by the immutable IdP subject.  The
                 # actor_id is a separately formatted value used by AgentCore
                 # sessions and does not identify the Secrets Manager entry.
@@ -1861,16 +1832,19 @@ async def invoke_agent_websocket(
                         await websocket.send_json({"type": "error", "content": str(exc)})
                         dynamic_mcp_servers = None
                         break
-                    if s.transport_type == "stdio" and not is_local_agent(agent):
+                    if s.transport_type not in ("sse", "streamable_http"):
                         await websocket.send_json({
                             "type": "error",
-                            "content": f"Stdio MCP cannot be used with AgentCore agents: {s.name}",
+                            "content": (
+                                f"Unsupported MCP transport ({s.name}: {s.transport_type}). "
+                                "Use streamable_http or sse."
+                            ),
                         })
                         dynamic_mcp_servers = None
                         break
                     server_data: dict[str, Any] = {
                         "name": s.name,
-                        "transport": "streamable_http" if s.transport_type == "stdio" else s.transport_type,
+                        "transport": s.transport_type,
                         "endpoint_url": s.endpoint_url,
                     }
                     dynamic_mcp_servers.append(server_data)

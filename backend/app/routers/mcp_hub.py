@@ -100,38 +100,13 @@ def _user_from_hub_claims(subject: str, groups: list[str]) -> UserInfo:
 
 @router.get("/info")
 def hub_public_info() -> dict:
-    """Public Hub resource URL for IDE OAuth (no mint)."""
+    """Public Hub resource URL for IDE OAuth."""
     return {
         "mcp_hub_url": hub.hub_public_url(),
         "resource": hub.hub_public_url(),
         "auth": "oauth",
         "contract_version": hub.CONTRACT_VERSION,
     }
-
-
-@router.post("/sessions", status_code=status.HTTP_410_GONE)
-def mint_hub_session_removed() -> dict:
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="hub_mint_removed_use_oauth",
-    )
-
-
-@router.post("/sessions/introspect", status_code=status.HTTP_410_GONE)
-def introspect_hub_session_removed() -> dict:
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="hub_mint_removed_use_oauth",
-    )
-
-
-@router.delete("/sessions/{hub_session_id}", status_code=status.HTTP_410_GONE)
-def revoke_hub_session_removed(hub_session_id: str) -> None:
-    _ = hub_session_id
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="hub_mint_removed_use_oauth",
-    )
 
 
 @router.post("/materialize-allowlist")

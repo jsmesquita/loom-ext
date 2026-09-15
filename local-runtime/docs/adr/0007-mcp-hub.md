@@ -2,16 +2,17 @@
 
 - **Status:** Aceito (Fase 1 entregue; Fase 2 = [ADR 0012](0012-mcp-hub-agents-as-tools.md))
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-14 — Fase 2 agents como tools ([ADR 0012](0012-mcp-hub-agents-as-tools.md))
+- **Atualizado:** 2026-09-15 — OAuth IdP; mint removido; tools só HTTP
+  ([ADR 0014](0014-mcp-host-isolated-http-registration.md))
 - **Decisores:** Mantenedores da plataforma / extensão local
 - **Relacionada a:**
   [ADR 0001 — IdP](0001-keycloak-as-identity-provider.md),
-  [ADR 0004 — Local MCP Runtime](0004-local-mcp-runtime.md),
+  [ADR 0014 — MCP host isolado](0014-mcp-host-isolated-http-registration.md),
   [ADR 0005 — Local Agent Runtime](0005-local-agent-runtime.md),
   [ADR 0006 — Extensão local-runtime](0006-local-runtime-extension-repo.md),
   [ADR 0008 — MCP Clients](0008-mcp-hub-clients.md),
   [ADR 0011 — OAuth Hub](0011-mcp-hub-oauth-idp.md),
-  [Spec 015 — Grafana/Rancher stdio](../specs/015-grafana-rancher-mcp-stdio.md)
+  [guia MCP host HTTP](../guide/mcp-host-http-registration.md)
 
 ## Problema
 
@@ -54,18 +55,17 @@ Loom FastAPI (control plane)
     │  catálogo, materialize, tools/call, grants
     ▼
 Keycloak / Microsoft Entra ID (AS)  ←── browser OAuth PKCE do IDE
-mcp-runtime / MCP HTTP remotos
+mcp-* (TEMPLATE=/mcp) / MCP HTTP remotos
 ```
 
 ### Princípios
 
 1. **Um catálogo.** O Hub não cadastra servidores. Lê o catálogo Loom e
-   encaminha para as fachadas já existentes (`stdio` via mcp-runtime,
-   `sse` / `streamable_http` remotos).
+   encaminha para URLs `sse` / `streamable_http` (hosts locais = `mcp-*`).
 2. **Login = IdP ativo do Loom (Keycloak / Microsoft Entra ID).** O MCP
    Client faz OAuth Authorization Code + PKCE; token no secret store do
-   IDE ([ADR 0011](0011-mcp-hub-oauth-idp.md)). **Sem mint** e **sem
-   fallback** `hs_…`. O fluxo é o mesmo qualquer que seja o IdP ativo.
+   IDE ([ADR 0011](0011-mcp-hub-oauth-idp.md)). **Sem mint** e **sem**
+   fallback `hs_…`. O fluxo é o mesmo qualquer que seja o IdP ativo.
 3. **Hub como resource server.** Publica PRM; valida access token (JWKS /
    audience = URL canônica do Hub). Service token Hub↔Loom separado.
 4. **Autorização:** [ADR 0008](0008-mcp-hub-clients.md) + grants por perfil
@@ -74,10 +74,9 @@ mcp-runtime / MCP HTTP remotos
 5. **Só tools MCP na Fase 1.** Fase 2 = agents como tools MCP
    ([ADR 0012](0012-mcp-hub-agents-as-tools.md)); sem A2A por default.
 6. **Nomes sem prefixo de produto.** Tools do Hub não usam prefixo `loom_`.
-   Em colisão entre servidores, namespacar pelo **servidor/template**.
+   Em colisão entre servidores, namespacar pelo **slug do servidor**.
 7. **Extensão ADR 0006.** Código em `local-runtime/services/mcp-hub`;
-   plugin documenta URL + OAuth (sem botão mint). BFF: materialize/call,
-   **não** mint de sessão IDE.
+   plugin documenta URL + OAuth. BFF: materialize/call (sem mint).
 8. **Fail-closed.** Token inválido / sem ACL → list vazio ou 401/403;
    call fora da allowlist → 403.
 
@@ -93,7 +92,7 @@ flowchart TB
     be["Backend FastAPI<br/>catálogo, materialize, call"]
     db[("PostgreSQL")]
     hub["mcp-hub<br/>PRM + JWT validate + MCP"]
-    mr["mcp-runtime"]
+    mr["mcp-* TEMPLATE=/mcp"]
   end
 
   idp{{"IdP ativo<br/>Keycloak / Microsoft Entra ID<br/>OAuth PKCE"}}
@@ -107,7 +106,7 @@ flowchart TB
   hub -->|"JWKS"| idp
   hub -->|"service token + user ctx"| be
   be --> db
-  be --> mr
+  be -->|"tools via URL HTTP"| mr
   be --> remote
 ```
 

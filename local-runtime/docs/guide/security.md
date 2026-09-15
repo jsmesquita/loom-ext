@@ -1,7 +1,7 @@
 # Segurança (APIs, web e sidecars)
 
 Guia **objetivo** para este fork: Loom BFF (FastAPI), UI React, sidecars
-(`mcp-hub`, `mcp-runtime`, `agent-runtime`, `cursor-adapter`), OAuth/OIDC,
+(`mcp-hub`, `mcp-*` hosts, `agent-runtime`, `cursor-adapter`), OAuth/OIDC,
 Postgres. Complementa [rules.md](rules.md) e [development.md](development.md).
 
 Não é um curso OWASP completo — só o que costuma aparecer **aqui**.
@@ -30,11 +30,11 @@ Specs/ADRs úteis: [0011 OAuth Hub](../adr/0011-mcp-hub-oauth-idp.md),
 |---|--------|-----------------|-------------------------|
 | **A01** Broken Access Control | **Sim** | Checar scopes em toda rota; Hub: canal `enabled` + grants + RBAC `loom:group` em agents; não confiar só no UI |
 | **A02** Cryptographic Failures | **Sim** | TLS em prod; HTTPS IdP; não armazenar access token em `mcp.json`; cookies Secure/HttpOnly se session cookie |
-| **A03** Injection | **Sim** | SQL via SQLAlchemy/params; sem concatenar SQL; MCP tool args tratados como **dados**, não código; stdio allowlist |
-| **A04** Insecure Design | **Parcial** | Preferir OAuth (ADR 0011) a mint; ports/adapters não vazam service token ao browser |
+| **A03** Injection | **Sim** | SQL via SQLAlchemy/params; MCP tool args = dados; allowlist YAML nos pods `mcp-*` |
+| **A04** Insecure Design | **Parcial** | OAuth Hub (ADR 0011); ports/adapters não vazam service token ao browser |
 | **A05** Security Misconfiguration | **Sim** | Defaults fail-closed; portas Hub em loopback em local; não expor Docker ports abertos; desligar debug em prod |
 | **A06** Vulnerable Components | **Sim** | Pin deps; `npm`/`uv` audit periódico; imagens slim |
-| **A07** Identification & Auth Failures | **Sim** | Validar JWT (iss, aud, exp, assinatura JWKS); PKCE no IDE; sem fallback `hs_…` |
+| **A07** Identification & Auth Failures | **Sim** | Validar JWT (iss, aud, exp, JWKS); PKCE no IDE; reject `hs_…` |
 | **A08** Software/Data Integrity | **Parcial** | Templates MCP allowlisted; não executar YAML arbitrário do usuário sem review |
 | **A09** Logging/Monitoring Failures | **Parcial** | Logar `sub`, client slug, negações auth — **não** Bearer completo; alertar 401 em massa se houver ops |
 | **A10** SSRF | **Sim** | Sidecars/BFF que fazem fetch (Loom URL, MCP endpoints): allowlist hosts; não passar URL crua do cliente sem validar |
@@ -107,9 +107,9 @@ Checklist commit: `git diff` sem `sk-`, `eyJ` (JWT), `pat:`, senhas.
 - Sempre ORM/SQLAlchemy com binds; **proibido** f-string em SQL
 - Raw SQL só com parâmetros nomeados e review
 
-### Command / stdio
+### Command / child process (hosts `mcp-*`)
 
-- `mcp-runtime`: só templates allowlisted; sem shell a partir de input do usuário
+- Cada pod `TEMPLATE=`: só o YAML allowlisted daquele MCP; sem shell a partir de input do usuário
 - Argumentos de tool ≠ argv do SO sem escaping/allowlist
 
 ### XSS / HTML
@@ -142,8 +142,8 @@ Varredura rápida pós-hexagonal (Fase 6):
 | Serviço | Auth fail-closed | Logs | Secrets |
 |---------|------------------|------|---------|
 | mcp-hub | OIDC unset / JWT fail → deny; service token required | JWT: tipo de erro / aud / azp — **não** Bearer; PG DSN sem password | `MCP_HUB_SERVICE_TOKEN`, DSN via env |
-| mcp-runtime | Bearer runtime token | stderr sanitize redacts `Authorization: Bearer` | `resolve_secret_refs` never logs values |
-| agent-runtime | Bearer runtime token | sem echo de token | `AGENT_RUNTIME_TOKEN` / MCP runtime token env |
+| mcp-* hosts | Lateral trust (auth off); opt-in `MCP_RUNTIME_REQUIRE_AUTH` | stderr sanitize | secrets só no env do filho |
+| agent-runtime | Bearer runtime token | sem echo de token | `AGENT_RUNTIME_TOKEN` / bearer MCP no payload |
 | cursor-adapter | API key required for runs | erros tipados, sem key | `CURSOR_API_KEY` env |
 
 Nada a corrigir nesta passagem; manter o checklist acima em PRs novos.

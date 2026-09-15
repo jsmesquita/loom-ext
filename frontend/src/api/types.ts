@@ -780,28 +780,15 @@ export interface ConnectorInfo {
   id: number;
   name: string;
   description: string | null;
-  auth_type: "none" | "oauth2" | "api_key" | "loom";
+  auth_type: "none" | "oauth2" | "api_key";
   has_user_api_key: boolean;
   supports_elicitation: boolean;
   delegation_mode?: "m2m" | "obo";
 }
 
 // MCP Server types
-export type McpTransportType = "sse" | "streamable_http" | "stdio";
-export type McpAuthType = "none" | "oauth2" | "api_key" | "loom";
-
-export interface McpTemplate {
-  id: string;
-  display_name: string;
-  params_schema: Record<string, { type?: string; pattern?: string }>;
-  secrets: Array<{ name: string; env: string }>;
-}
-
-export interface McpSecretRef {
-  name: string;
-  backend: "env" | "secrets_manager";
-  ref: string;
-}
+export type McpTransportType = "sse" | "streamable_http";
+export type McpAuthType = "none" | "oauth2" | "api_key";
 
 export interface McpServer {
   id: number;
@@ -811,10 +798,6 @@ export interface McpServer {
   transport_type: McpTransportType;
   status: "active" | "inactive" | "error";
   auth_type: McpAuthType;
-  template_id?: string | null;
-  template_params?: Record<string, string> | null;
-  secret_refs?: McpSecretRef[] | null;
-  runtime_state?: string | null;
   oauth2_well_known_url: string | null;
   oauth2_client_id: string | null;
   oauth2_scopes: string | null;
@@ -838,9 +821,6 @@ export interface McpServerCreateRequest {
   endpoint_url?: string;
   transport_type: McpTransportType;
   auth_type?: McpAuthType;
-  template_id?: string;
-  template_params?: Record<string, string>;
-  secret_refs?: McpSecretRef[];
   oauth2_well_known_url?: string;
   oauth2_client_id?: string;
   oauth2_client_secret?: string;
@@ -861,9 +841,6 @@ export interface McpServerUpdateRequest {
   transport_type?: McpTransportType;
   status?: "active" | "inactive" | "error";
   auth_type?: McpAuthType;
-  template_id?: string;
-  template_params?: Record<string, string>;
-  secret_refs?: McpSecretRef[];
   oauth2_well_known_url?: string;
   oauth2_client_id?: string;
   oauth2_client_secret?: string;

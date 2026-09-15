@@ -10,12 +10,7 @@ import type {
   ToolInvokeResult,
   TestConnectionResult,
   ConnectorInfo,
-  McpTemplate,
 } from "./types";
-
-export function listMcpTemplates(): Promise<McpTemplate[]> {
-  return apiFetch<{ templates: McpTemplate[] }>("/api/mcp/templates").then((data) => data.templates);
-}
 
 export function listMcpServers(): Promise<McpServer[]> {
   return apiFetch<McpServer[]>("/api/mcp/servers");

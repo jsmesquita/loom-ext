@@ -1,52 +1,47 @@
-# Spec 015 — Grafana e Rancher MCP (stdio local)
+# Spec 015 — Grafana e Rancher MCP (hosts locais)
 
-- **Status:** Aceita (local-runtime)
+- **Status:** Aceita (local-runtime / ADR 0014)
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-13 — Rancher via rede Docker `kind` + NodePort 30080
-- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md)
-- **Não é** adapter no core. São templates + secrets, como [009](009-azure-devops-mcp-example.md).
+- **Atualizado:** 2026-09-15 — serviços `TEMPLATE=`; registro HTTP no Loom
+- **Implementa:** [ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)
+- **Não é** adapter no core. São templates + secrets no overlay.
 
 ## 1. Fluxo
 
 ```text
 Loom (catálogo + ACL)
-  → mcp-runtime (rede compose + rede Docker externa `kind`)
-    → Grafana:  uvx mcp-grafana     → http://grafana.local:8080 (host-gateway)
-    → Rancher:  npx rancher-mcp-server → http://kind-control-plane:30080
+  → http://mcp-grafana:8787/mcp     TEMPLATE=grafana
+  → http://mcp-rancher:8787/mcp     TEMPLATE=rancher
+       │
+       ├─ Grafana: uvx mcp-grafana → http://grafana.local:8080
+       └─ Rancher: npx rancher-mcp-server → http://kind-control-plane:30080
 ```
 
-## 2. Templates
+## 2. Templates / env
 
-| id | command | param | secret (.env → child) |
-|----|---------|-------|------------------------|
-| `grafana` | `uvx` | `grafana_url` → env `GRAFANA_URL` | `GRAFANA_SERVICE_ACCOUNT_TOKEN` |
-| `rancher` | `npx` | `rancher_server_url` (CLI) | `RANCHER_MCP_RANCHER_TOKEN` |
+| Serviço | TEMPLATE | Param env | Secret |
+|---------|----------|-----------|--------|
+| `mcp-grafana` | `grafana` | `GRAFANA_MCP_URL` | `GRAFANA_SERVICE_ACCOUNT_TOKEN` |
+| `mcp-rancher` | `rancher` | `RANCHER_MCP_SERVER_URL` | `RANCHER_MCP_RANCHER_TOKEN` |
 
-### URLs Rancher (contrato lab `C:\\work\\k8s`)
+### URLs Rancher (lab `kind`)
 
 | Onde | URL |
 |------|-----|
-| Outro Compose/Docker (**Loom**) | `http://kind-control-plane:30080` |
-| Stdio no WSL/Windows | `http://rancher.local:8080` |
+| Rede Compose + `kind` | `http://kind-control-plane:30080` |
+| Browser no host | `http://rancher.local:8080` |
 
-O overlay anexa `mcp-runtime` à rede externa `kind`. O entrypoint resolve
-`kind-control-plane` e aliasa `rancher.local` no `/etc/hosts` do container
-(para o Ingress bater o `Host` quando útil). Prefira a URL da tabela Loom.
-
-Não use `:8443` / port-forward a partir do `mcp-runtime` (loopback do host).
+O overlay anexa os serviços `mcp-*` à rede externa `kind`.
 
 ## 3. Registro (operador)
 
-1. Kind rodando (`docker network ls` mostra `kind`).
-2. Secrets no `.env`; recreate `mcp-runtime`.
-3. MCP → New → `stdio` → template `rancher` →
-   `rancher_server_url=http://kind-control-plane:30080`.
+1. Kind rodando; secrets no `.env`.
+2. `docker compose … up -d --build mcp-rancher mcp-grafana`
+3. Loom → MCP → New → `streamable_http` →
+   `http://mcp-rancher:8787/mcp` (ou grafana).
 4. Refresh tools + `McpServerAccess`.
-
-Grafana (lab): `http://grafana.local:8080`.
 
 ## 4. Fora de escopo
 
-- MCP Grafana/Rancher em HTTP no catálogo Loom (alternativa futura)
-- OAuth / tokens rotativos além do env local
-- Alterar o repositório `C:\\work\\k8s`
+- `transport=stdio` / templates no formulário Core
+- Port-forward `:8443` a partir do container

@@ -11,9 +11,8 @@
 # whole UI, admin settings, persistence, the LiteLLM proxy, and invoke of source=local
 # agents (seeded Orientador Acadêmico → LiteLLM mock). Still needs real AWS: deploying
 # and invoking AgentCore/harness/register agents, memory, S3.
-# cursor-adapter and mcp-runtime live in local-runtime/compose/overlay.yml
+# cursor-adapter and mcp-* hosts live in local-runtime/compose/overlay.yml
 # (make local.up merges both compose files). Completions still need CURSOR_API_KEY.
-# Stdio MCP children need a template + MCP_RUNTIME_TOKEN in the overlay.
 
 name: loom
 
@@ -111,7 +110,7 @@ services:
       LOOM_LITELLM_PROXY_BASE_URL: http://localhost:4000
       LOOM_LITELLM_DISCOVERY_BASE_URL: http://litellm:4000
       LOOM_LITELLM_PROXY_API_KEY: ${LITELLM_MASTER_KEY:-sk-loom-local-dev}
-      # MCP_RUNTIME_* injected by local-runtime/compose/overlay.yml
+      # Local-runtime overlay injects AGENT_RUNTIME_* / MCP_HUB_* (not MCP host APIs).
       # Bind-mounted source lives on a filesystem whose change events do not reach the
       # container, so the reloader has to poll.
       WATCHFILES_FORCE_POLLING: "true"

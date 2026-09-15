@@ -4,6 +4,12 @@ ADRs: [../adr/README.md](../adr/README.md)
 
 Todas as specs do fork moram **aqui** (`local-runtime/docs/specs/`). Não criar em `docs/` na raiz do Loom.
 
+**MCP local (2026-09-15):** catálogo Loom = só HTTP. Hosts = `TEMPLATE=` nos
+serviços Compose. Guia operacional:
+[mcp-host-http-registration.md](../guide/mcp-host-http-registration.md) ·
+[ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md). Specs 006–010 /
+015 descrevem o desenho **histórico** (stdio no Core) e estão superseded.
+
 ## Índice
 
 ### IdP / stack local
@@ -15,13 +21,13 @@ Todas as specs do fork moram **aqui** (`local-runtime/docs/specs/`). Não criar 
 
 ### MCP local
 
-- [005 — Existing MCP architecture](005-existing-mcp-architecture.md)
-- [006 — Local MCP runtime](006-local-mcp-runtime.md)
-- [007 — Registration](007-local-mcp-registration.md)
-- [008 — Security](008-local-mcp-security.md)
-- [009 — Azure DevOps example](009-azure-devops-mcp-example.md)
-- [010 — Observability](010-local-mcp-observability.md)
-- [015 — Grafana / Rancher stdio](015-grafana-rancher-mcp-stdio.md)
+- [005 — Existing MCP architecture](005-existing-mcp-architecture.md) *(análise)*
+- [006 — Local MCP runtime](006-local-mcp-runtime.md) — **superseded** → ADR 0014
+- [007 — Registration](007-local-mcp-registration.md) — **superseded** → ADR 0014
+- [008 — Security](008-local-mcp-security.md) — **superseded** (em parte) → ADR 0014 + guia security
+- [009 — Azure DevOps example](009-azure-devops-mcp-example.md) — **atualizado** (HTTP)
+- [010 — Observability](010-local-mcp-observability.md) — **superseded** (stdio Core)
+- [015 — Grafana / Rancher](015-grafana-rancher-mcp-stdio.md) — **atualizado** (HTTP / TEMPLATE=)
 
 ### Agent runtime
 

@@ -50,12 +50,3 @@ def require_access_or_403(db: Session, server_id: int, agent_id: int) -> McpServ
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
         ) from exc
-
-
-def reject_stdio_for_agentcore(servers: list[McpServer]) -> None:
-    names = [server.name for server in servers if server.transport_type == "stdio"]
-    if names:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Stdio MCP cannot be deployed to AgentCore: {', '.join(names)}",
-        )

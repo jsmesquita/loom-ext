@@ -1,9 +1,17 @@
 # 4. Runtime de MCP local (stdio) atrás do catálogo existente
 
-- **Status:** Proposta (não implementar até validar com as specs 006–010)
+- **Status:** **Superseded** por [ADR 0014](0014-mcp-host-isolated-http-registration.md)
+  (2026-09-15) — Loom só registra HTTP; um serviço `TEMPLATE=` por MCP.
 - **Data:** 2026-09-12
 - **Decisores:** Mantenedores da plataforma
-- **Relacionada a:** [Spec 005 — análise MCP](../specs/005-existing-mcp-architecture.md), [ADR 0001 — IdP](0001-keycloak-as-identity-provider.md), [ADR 0005 — Local Agent Runtime](0005-local-agent-runtime.md), [ADR 0006 — Extensão local-runtime](0006-local-runtime-extension-repo.md)
+- **Relacionada a:** [Spec 005](../specs/005-existing-mcp-architecture.md),
+  [ADR 0005](0005-local-agent-runtime.md), [ADR 0006](0006-local-runtime-extension-repo.md),
+  [ADR 0014](0014-mcp-host-isolated-http-registration.md)
+
+> **Estado atual:** o host ainda usa stdio **dentro** do container (`mcp-*`),
+> mas o Core **não** tem `transport=stdio`, `ensure_stdio_*` nem
+> `MCP_RUNTIME_URL`. Registro = formulário nativo `streamable_http` →
+> `http://mcp-<name>:8787/mcp`. Texto abaixo é histórico da proposta inicial.
 
 ## Problema
 

@@ -1,19 +1,22 @@
 # 6. Extensão `local-runtime` como plugin instalável do Loom
 
-- **Status:** Aceita para Fases 1–2 e 5 (co-located sob `local-runtime/`; agent-runtime + BFF no overlay). Split de repo git opcional depois. Fase 3 (forms stdio só no plugin) ainda aberta.
+- **Status:** Aceita (co-located sob `local-runtime/`; agent-runtime + BFF no
+  overlay; MCP HTTP-only no Core — [ADR 0014](0014-mcp-host-isolated-http-registration.md)).
+  Split de repo git opcional depois.
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-13 — sidecars; overlay; Extension Host; **agent-runtime** `:8766` + `AGENT_RUNTIME_URL`
+- **Atualizado:** 2026-09-15 — Fase “stdio no Core” encerrada (forms nativos HTTP)
 - **Decisores:** Mantenedores da plataforma / extensão local
 - **Relacionada a:**
   [ADR 0003 — LiteLLM](0003-litellm-as-llm-gateway.md),
-  [ADR 0004 — Local MCP Runtime](0004-local-mcp-runtime.md),
+  [ADR 0004](0004-local-mcp-runtime.md) *(histórico)*,
+  [ADR 0014](0014-mcp-host-isolated-http-registration.md),
   [ADR 0005 — Local Agent Runtime](0005-local-agent-runtime.md),
   [ADR 0001 — IdP](0001-keycloak-as-identity-provider.md)
 
 ## Problema
 
-O trabalho local (MCP stdio, cursor-adapter, agent-runtime, forms e
-telas de operação) está **misturado** ao fonte do [awslabs/loom](https://github.com/awslabs/loom).
+O trabalho local (hosts MCP `TEMPLATE=`, cursor-adapter, agent-runtime, Hub,
+telas de operação) estava **misturado** ao fonte do [awslabs/loom](https://github.com/awslabs/loom).
 Isso impede atualizar o remoto com segurança: cada `git pull` / rebase
 arrasta features de extensão pelo `backend/`, `frontend/` e
 `docker-compose.yml`.
@@ -129,7 +132,7 @@ Cada capacidade local é um **serviço** com lifecycle próprio:
 
 | Serviço | Responsabilidade | Escala |
 | --- | --- | --- |
-| `mcp-runtime` | Supervisor stdio + fachada HTTP MCP | N filhos / réplicas do facade se preciso |
+| `mcp-*` (mesma imagem) | Host MCP `TEMPLATE=` → `POST /mcp` | 1 serviço Compose por template |
 | `agent-runtime` | Tool loop local, SSE de invoke | N sessões; hard limit; scale-out depois |
 | `cursor-adapter` | CustomLLM → Cursor SDK | Réplicas stateless atrás do LiteLLM |
 | LiteLLM | Gateway de modelo (já ADR 0003) | Já apartado |
@@ -157,15 +160,17 @@ services:
   keycloak:
   litellm:              # já apartado (ADR 0003)
   cursor-adapter:       # extensão — serviço próprio
-  mcp-runtime:          # extensão — serviço próprio
+  mcp-azure-devops:     # extensão — TEMPLATE=azure-devops
+  mcp-rancher:          # extensão — TEMPLATE=rancher
+  mcp-grafana:          # extensão — TEMPLATE=grafana
   agent-runtime:        # extensão — serviço próprio
 ```
 
 Regras de compose:
 
 1. `backend` do Loom **não** faz `build` dos runtimes locais; só recebe
-   env (`AGENT_RUNTIME_URL`, `MCP_RUNTIME_URL`, tokens).
-2. Overlay da extensão **adiciona** `cursor-adapter`, `mcp-runtime`,
+   env (`AGENT_RUNTIME_URL`, `AGENT_RUNTIME_TOKEN`, tokens).
+2. Overlay da extensão **adiciona** `cursor-adapter`, `mcp-*`,
    `agent-runtime` (e volumes de templates); não mistura código no
    container do FastAPI.
 3. Healthcheck **por serviço**; `depends_on` só onde houver ordem real
@@ -184,14 +189,13 @@ ao corte UI-plugin vs data plane.
 | Gancho | Camada | Função |
 | --- | --- | --- |
 | Loader de plugins + slots nav/rota | frontend | Instala **só UI** no bundle |
-| `AGENT_RUNTIME_URL` (+ token) | backend | BFF: `source=local` → proxy SSE (ADR 0005) |
-| (opcional) rotas BFF MCP runtime | backend | provision/health sem expor token ao browser |
+| `AGENT_RUNTIME_URL` (+ token) | backend | BFF: `source=external` → proxy SSE (ADR 0005) |
+| Catálogo MCP nativo | backend/UI | Só `sse` / `streamable_http` ([ADR 0014](0014-mcp-host-isolated-http-registration.md)) |
 | Compose overlay env | ops | Injeta URLs/tokens; sobe backends da extensão |
 
 SPA `:5174` **não** é o caminho. UI = plugin; compute = backends.
 
-MCP stdio **longo prazo:** Loom conhece MCP HTTP; o plugin/provisiona a
-fachada. `transport_type=stdio` no fork atual = dívida até Fase 3.
+MCP local: Loom registra URLs HTTP; stdio só **dentro** dos pods `mcp-*`.
 
 ### Relação entre os dois repositórios (C4 L2)
 
@@ -212,7 +216,7 @@ flowchart TB
     plugin["plugin/ UI only<br/>register + pages + forms"]
     subgraph dataPlane["Data plane - backends escalaveis"]
       ar["agent-runtime"]
-      mr["mcp-runtime"]
+      mr["mcp-* TEMPLATE=/mcp"]
       ca["cursor-adapter"]
     end
     tpl["templates / seeds / overlay"]
@@ -231,12 +235,11 @@ flowchart TB
   fe --> be
   be --> db
   be -->|"JWT"| idp
-  be -->|"BFF source=local"| ar
-  be -->|"BFF MCP ops"| mr
+  be -->|"BFF source=external"| ar
   ar --> litellm
   litellm --> ca
-  ar -->|"MCP HTTP"| mr
-  mr -->|"stdio"| ado
+  ar -->|"MCP HTTP catálogo"| mr
+  mr -->|"filho no pod"| ado
   be --> ac
   tpl -.-> mr
   tpl -.-> ar
@@ -276,7 +279,7 @@ local-runtime/
 │   │   └── locales/
 │   └── tsconfig.json
 ├── services/                        # backends apartados (não-UI)
-│   ├── mcp-runtime/                 # + templates/ (allowlist YAML)
+│   ├── mcp-runtime/                 # imagem + templates/ (TEMPLATE=)
 │   ├── agent-runtime/
 │   ├── cursor-adapter/
 │   └── mcp-hub/
@@ -317,9 +320,8 @@ loom/frontend/src/extensions/
 | **0** | Esta ADR + política plugin | Aceite explícito |
 | **1** | Repo + sidecars/templates + overlay | runtimes sobem; testes isolados — **feito** |
 | **2** | Extension Host no Loom + `plugin/register` | Telas locais no shell Loom — **feito** (ops page) |
-| **3** | Forms stdio só no plugin; core sem UI stdio | Operador usa rotas do plugin |
-| **4** | Loom só MCP HTTP no modelo longo prazo | stdio só na extensão |
-| **5** | `agent-runtime` + `AGENT_RUNTIME_URL` | BFF + loop MCP — **feito**; aceite [014](../specs/014-local-agent-orientador-ado-acceptance.md) em validação |
+| **3–4** | Loom só MCP HTTP; hosts `mcp-*` na extensão | **feito** ([ADR 0014](0014-mcp-host-isolated-http-registration.md)) |
+| **5** | `agent-runtime` + `AGENT_RUNTIME_URL` | BFF + loop MCP — **feito**; aceite [014](../specs/014-local-agent-orientador-ado-acceptance.md) |
 | **6** | CI extensão + `install-into-loom` / `bump-loom` | Pull awslabs sem rebase de feature |
 
 ### Auth, RBAC e visual
@@ -354,20 +356,20 @@ loom/frontend/src/extensions/
 - Dev precisa `install-into-loom` (ou compose mount) para o Vite ver o plugin.
 - peerDependency de React: versões desalinhadas quebram o build — pin
   documentado.
-- Dívida `stdio` no core: migrar UI para o plugin (Fase 3), modelo HTTP
-  longo prazo (Fase 4).
+- Dívida `stdio` no Core: **encerrada** (ADR 0014); stdio só nos pods `mcp-*`.
 - Sem segundo OIDC client só para UI (o plugin usa a sessão do Loom).
 
 ## O que não fazer
 
 - Colocar tool loop, supervisor ou secrets no plugin UI ou no uvicorn.
-- Continuar forms MCP local só no `frontend/src/components` do Loom.
+- Continuar forms MCP “especiais” só no `frontend/src/components` do Loom
+  (usar formulário nativo HTTP).
 - Empacotar React duplicado no plugin.
 - Validar JWT do IdP nos backends de data plane.
 - Federation na v1 sem necessidade.
 - Copiar o Chat para o plugin.
 - Expor `MCP_RUNTIME_TOKEN` / `AGENT_RUNTIME_TOKEN` ao browser.
-- Implementar Fases 3–4 / 6 antes do Host + runtime (Fases 2 e 5) estáveis.
+- Reintroduzir `MCP_RUNTIME_URL` / `transport=stdio` no Core.
 
 ## Specs / trabalho de acompanhamento
 
