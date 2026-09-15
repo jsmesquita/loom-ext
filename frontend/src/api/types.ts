@@ -13,7 +13,7 @@ export interface AgentResponse {
   active_session_count: number;
   registered_at: string | null;
   last_refreshed_at: string | null;
-  source: "register" | "deploy" | "harness" | "local" | null;
+  source: "register" | "deploy" | "harness" | "external" | "local" | null;
   deployment_status: string | null;
   execution_role_arn: string | null;
   config_hash: string | null;

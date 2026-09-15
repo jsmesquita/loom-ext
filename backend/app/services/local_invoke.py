@@ -1,7 +1,7 @@
-"""Local-dev invoke path: Loom backend → agent-runtime (or LiteLLM fallback).
+"""BYO / external-agent invoke path: Loom backend → agent-runtime (or LiteLLM).
 
-Only agents with source='local' use this. Deployed/harness/register agents
-keep the existing AgentCore runtime path.
+Only agents with source='external' (UI: BYO agent; legacy source='local' still
+recognized) use this. Deployed/harness/register agents keep AgentCore.
 
 When AGENT_RUNTIME_URL is set, the backend is a BFF: it authorizes, mounts the
 spec-011 payload, and proxies SSE from agent-runtime. Otherwise it keeps the
@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 CONTRACT_VERSION = "2026-09-local-1"
 
+# Canonical value is "external". Legacy "local" accepted until DB migration runs.
+EXTERNAL_AGENT_SOURCES = frozenset({"external", "local"})
+
 
 class LocalInvokeError(Exception):
     """LiteLLM proxy / agent-runtime is missing or rejected the request."""
@@ -36,8 +39,13 @@ def format_sse_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def is_local_agent(agent: Agent) -> bool:
-    return (agent.source or "") == "local"
+def is_external_agent(agent: Agent) -> bool:
+    """True for BYO agents (source=external); also accepts legacy source=local."""
+    return (agent.source or "") in EXTERNAL_AGENT_SOURCES
+
+
+# Alias kept so older imports keep working during the rename.
+is_local_agent = is_external_agent
 
 
 def agent_runtime_base_url() -> str:
@@ -210,6 +218,29 @@ async def stream_litellm_text(
         yield text
 
 
+async def _post_runtime_approval_decision(session_id: str, decision: str) -> None:
+    base = agent_runtime_base_url()
+    token = agent_runtime_token()
+    if not base or not token:
+        return
+    url = f"{base}/v1/sessions/{session_id}/approval-decision"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, headers=headers, json={"decision": decision})
+            if resp.status_code >= 400:
+                logger.warning(
+                    "agent-runtime approval-decision HTTP %s: %s",
+                    resp.status_code,
+                    resp.text[:200],
+                )
+    except Exception:
+        logger.exception("failed to post approval-decision to agent-runtime")
+
+
 async def _proxy_agent_runtime_sse(
     *,
     payload: dict[str, Any],
@@ -227,6 +258,7 @@ async def _proxy_agent_runtime_sse(
         "Accept": "text/event-stream",
     }
     timeout = httpx.Timeout(float((payload.get("options") or {}).get("timeout_s") or 300) + 30.0, connect=10.0)
+    session_id = str(payload.get("session_id") or "")
     async with httpx.AsyncClient(timeout=timeout) as client:
         async with client.stream("POST", url, headers=headers, json=payload) as response:
             if response.status_code >= 400:
@@ -234,9 +266,69 @@ async def _proxy_agent_runtime_sse(
                 raise LocalInvokeError(
                     f"agent-runtime HTTP {response.status_code}: {body[:500]}"
                 )
+            event_name = "message"
+            data_lines: list[str] = []
             async for line in response.aiter_lines():
-                # Re-emit SSE lines; blank line ends an event.
-                yield line + "\n"
+                if line.startswith("event:"):
+                    event_name = line[6:].strip()
+                    continue
+                if line.startswith("data:"):
+                    data_lines.append(line[5:].lstrip())
+                    continue
+                if line != "":
+                    # Keep-alive / unknown — ignore.
+                    continue
+                raw_data = "\n".join(data_lines)
+                data_lines = []
+                try:
+                    data = json.loads(raw_data) if raw_data else {}
+                except json.JSONDecodeError:
+                    data = {"raw": raw_data}
+                if not isinstance(data, dict):
+                    data = {"value": data}
+
+                if event_name == "approval_needed":
+                    from app.routers.approvals import create_approval_request, wait_for_approval
+
+                    request_id = create_approval_request()
+                    tool_name = str(data.get("tool_name") or "")
+                    timeout_s = float(data.get("timeout_seconds") or 300)
+                    approval_event = {
+                        "request_id": request_id,
+                        "interrupt_id": request_id,
+                        "interrupt_name": tool_name,
+                        "tool_name": tool_name,
+                        "tool_input_summary": "",
+                        "policy_name": str(data.get("policy_name") or ""),
+                        "policy_type": str(data.get("policy_type") or "loop_hook"),
+                        "approval_mode": str(data.get("approval_mode") or "require_approval"),
+                        "timeout_seconds": int(timeout_s),
+                        "session_id": session_id or str(data.get("session_id") or ""),
+                    }
+                    yield format_sse_event("approval_request", approval_event)
+                    decision = await wait_for_approval(request_id, timeout=timeout_s)
+                    decision_str = str(decision.get("decision") or "timeout")
+                    yield format_sse_event("approval_resolved", {
+                        "request_id": request_id,
+                        "status": decision_str,
+                        "decided_by": decision.get("decided_by"),
+                        "reason": decision.get("reason"),
+                    })
+                    if decision_str == "approved":
+                        runtime_decision = "approved"
+                    elif decision_str == "trusted":
+                        runtime_decision = "trusted"
+                    else:
+                        runtime_decision = "denied" if decision_str != "timeout" else "timeout"
+                    await _post_runtime_approval_decision(
+                        session_id or str(data.get("session_id") or ""),
+                        runtime_decision,
+                    )
+                    event_name = "message"
+                    continue
+
+                yield format_sse_event(event_name, data)
+                event_name = "message"
 
 
 async def invoke_local_agent_stream(
@@ -249,6 +341,7 @@ async def invoke_local_agent_stream(
     runtime_model_id: str | None = None,
     dynamic_mcp_servers: list[dict[str, Any]] | None = None,
     subject: str | None = None,
+    approval_policies: list[dict[str, Any]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Yield SSE events: session_start, chunk, session_end (or error)."""
     session_id = session.session_id
@@ -285,7 +378,7 @@ async def invoke_local_agent_stream(
                     "agent_id": str(agent.id),
                     "session_id": session_id,
                 },
-                "approval_policies": [],
+                "approval_policies": list(approval_policies or []),
                 "options": {
                     "timeout_s": options["timeout_s"],
                     "max_tool_rounds": options["max_tool_rounds"],

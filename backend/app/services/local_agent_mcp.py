@@ -1,4 +1,4 @@
-"""Persist/resolve MCP + A2A linked to source=local agents (Hub + Chat)."""
+"""Persist/resolve MCP + A2A linked to source=external (BYO) agents (Hub + Chat)."""
 from __future__ import annotations
 
 import json
@@ -148,10 +148,12 @@ def set_local_agent_integrations(
     a2a_agent_ids: list[int] | None = None,
 ) -> dict[str, list[int]]:
     """Replace MCP and/or A2A links on a local agent (config + access rules)."""
-    if agent.source != "local":
+    from app.services.local_invoke import is_external_agent
+
+    if not is_external_agent(agent):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="local integrations are only supported for source=local agents",
+            detail="local integrations are only supported for source=external (BYO) agents",
         )
     entry = _agent_config_entry(agent)
     if entry is None:
@@ -346,10 +348,12 @@ def set_runtime_options(
     timeout_s: float | None = None,
     max_tool_rounds: int | None = None,
 ) -> dict[str, float | int]:
-    if agent.source != "local":
+    from app.services.local_invoke import is_external_agent
+
+    if not is_external_agent(agent):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="runtime options are only supported for source=local agents",
+            detail="runtime options are only supported for source=external (BYO) agents",
         )
     entry = _agent_config_entry(agent)
     if entry is None:

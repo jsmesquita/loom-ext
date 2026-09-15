@@ -1,7 +1,7 @@
 """Local agent create/list from agent-runtime templates (Spec 026 A2).
 
 Authorized Core exception: thin BFF over agent-runtime allowlist; persists
-source=local rows in the Loom agents catalog.
+source=external (BYO) rows in the Loom agents catalog.
 """
 from __future__ import annotations
 
@@ -86,10 +86,12 @@ def _require_local_agent(db: Session, agent_id: int) -> Agent:
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if agent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
-    if agent.source != "local":
+    from app.services.local_invoke import is_external_agent
+
+    if not is_external_agent(agent):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="endpoint only supported for source=local agents",
+            detail="endpoint only supported for source=external (BYO) agents",
         )
     return agent
 
@@ -172,7 +174,7 @@ def create_local_agent(
         status="READY",
         region="local",
         account_id="local",
-        source="local",
+        source="external",
         deployment_status="deployed",
         protocol="HTTP",
         network_mode="PUBLIC",

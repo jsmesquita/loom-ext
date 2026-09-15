@@ -115,6 +115,25 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             _json(self, 200, {"cancelled": cancelled, "session_id": session_id})
             return
 
+        if path.startswith("/v1/sessions/") and path.endswith("/approval-decision"):
+            session_id = path.split("/")[3]
+            decision = ""
+            if isinstance(body, dict):
+                decision = str(body.get("decision") or "").strip().lower()
+            # Normalize Chat / Loom decide vocabulary.
+            if decision in ("y", "yes", "approve", "approved"):
+                decision = "approved"
+            elif decision in ("t", "trust", "trusted"):
+                decision = "trusted"
+            elif decision in ("n", "no", "deny", "denied", "timeout"):
+                decision = "denied" if decision != "timeout" else "timeout"
+            else:
+                _json(self, 400, {"error": {"message": "invalid decision", "code": "invalid_payload"}})
+                return
+            ok = self.sessions.resolve_approval(session_id, decision)
+            _json(self, 200, {"resolved": ok, "session_id": session_id, "decision": decision})
+            return
+
         if path.startswith("/v1/templates/") and path.endswith("/materialize"):
             template_id = path.split("/")[3]
             try:

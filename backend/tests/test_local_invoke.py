@@ -51,7 +51,7 @@ class TestLocalInvokeHelpers(unittest.TestCase):
             status="READY",
             region="local",
             account_id="local",
-            source="local",
+            source="external",
         )
         agent.config_entries = []
         from app.models.config_entry import ConfigEntry
@@ -79,7 +79,7 @@ class TestLocalInvokeHelpers(unittest.TestCase):
             status="READY",
             region="local",
             account_id="local",
-            source="local",
+            source="external",
         )
         agent.config_entries = []
         self.assertEqual(resolve_local_model_id(agent, "cursor-local"), "cursor-local")

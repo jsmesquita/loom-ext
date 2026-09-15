@@ -4110,7 +4110,7 @@ def patch_agent(
         valid_ids = {m["model_id"] for m in get_merged_models(DEFAULT_REGION)}
         # Local agents may use LiteLLM ids that are briefly absent from discovery
         # (or template allowlist ids); still persist them on AGENT_CONFIG_JSON.
-        if request.model_id not in valid_ids and agent.source != "local":
+        if request.model_id not in valid_ids and agent.source not in ("external", "local"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid model ID: {request.model_id}",
@@ -4127,7 +4127,7 @@ def patch_agent(
     if "allowed_model_ids" in request.model_fields_set and request.allowed_model_ids is not None:
         valid_ids = {m["model_id"] for m in get_merged_models(DEFAULT_REGION)}
         invalid = [m for m in request.allowed_model_ids if m not in valid_ids]
-        if invalid and agent.source != "local":
+        if invalid and agent.source not in ("external", "local"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid model IDs: {invalid}",

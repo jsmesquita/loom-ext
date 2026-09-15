@@ -75,6 +75,29 @@ Checklist pós-merge:
 
 ## Registro
 
+### 2026-09-15 — Rename `source=local` → `source=external` (UI: BYO agent)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Docs** |
+| **Ok Dev** | Sim — rename solicitado |
+| **Motivo** | “local” sugeria só laptop; valor canônico = fora do AgentCore |
+| **Core** | `agents.source`: `local`→`external`; seed/create; `is_external_agent()` (+ alias `is_local_agent`); migração em `init_db`; UI badge/label **BYO** |
+| **Compat** | Predicate ainda aceita `local` legado até a migração rodar |
+| **Docs** | architecture + ADR 0005 nota; este changelog |
+
+### 2026-09-15 — HITL approval policies no caminho local (agent-runtime)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Extension** |
+| **Ok Dev** | Sim — fix do gate que não acionava no Chat `source=local` |
+| **Motivo** | `local_invoke` enviava `approval_policies: []`; runtime não fazia loop_hook |
+| **Core** | `backend/app/services/local_invoke.py`, `backend/app/routers/invocations.py` — repassa policies ativas; BFF trata SSE `approval_needed` → `approval_request` / decide → POST runtime |
+| **Extension** | `agent-runtime` — match loop_hook antes de MCP tool; `POST .../approval-decision`; store `arm/wait/resolve_approval` |
+| **Limite** | Gate cobre **tools MCP** no agent-runtime. Tools A2A (ADK) ainda não rodam neste runtime. |
+| **Sync** | Baixo risco funcional; conflito possível em `local_invoke.py` / `invocations.py` no rebase |
+
 ### 2026-09-14 — Hub analytics Errors tab
 
 | Zona | Path | Nota |

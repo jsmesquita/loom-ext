@@ -86,14 +86,20 @@ Regras:
    `ensure_stdio_ready` (evita `404 unknown_server` após recreate do
    mcp-runtime). Enrichment injeta `service_bearer` + token de serviço
    (`enrich_mcp_servers_for_runtime`); **nunca** o JWT do usuário.
-4. `approval_policies` pode ser `[]` em M1.
+4. `approval_policies`: lista de policies Loom (`loop_hook`). Antes de cada
+   `tools/call`, o runtime faz match por glob no nome MCP e no nome
+   `{server}__{tool}`. Em `require_approval`, emite SSE `approval_needed` e
+   bloqueia até `POST /v1/sessions/{id}/approval-decision`. O BFF traduz
+   para `approval_request` / `wait_for_approval` do Chat. `notify_only` não
+   pausa. `[]` = sem gate.
 5. `model_id=cursor-local`: o LiteLLM/CustomLLM + cursor-adapter operam
    em **planner mode** (spec 004 §9). O agent-runtime ainda é quem chama
    MCP; o Cursor só devolve `tool_calls` / `content`.
 
 ## 4. Response (SSE)
 
-Mesmos eventos do Chat: `session_start`, `chunk`, `session_end`, `error`.
+Mesmos eventos do Chat: `session_start`, `chunk`, `session_end`, `error`,
+mais `approval_needed` (interno BFF → vira `approval_request` no cliente).
 `token_source=local-agent-runtime`.
 
 ## 5. Tool loop (runtime)
@@ -103,8 +109,8 @@ Mesmos eventos do Chat: `session_start`, `chunk`, `session_end`, `error`.
 2. Nomes OpenAI: `{server}__{tool}` (sanitizados).
 3. `POST LiteLLM /v1/chat/completions` com `tools` (e, para cursor-local,
    marker `<<<loom_openai_tools>>>` nas messages — workaround CustomLLM).
-4. Se `tool_calls` → `tools/call` no MCP; anexar `role=tool`; repetir até
-   texto final ou `max_tool_rounds`.
+4. Se `tool_calls` → (opcional HITL) → `tools/call` no MCP; anexar `role=tool`;
+   repetir até texto final ou `max_tool_rounds`.
 5. Recuperação: se a resposta LiteLLM trouxer JSON `tool_calls` só em
    `content` (drop do campo estruturado), o runtime reconstrói a lista.
 

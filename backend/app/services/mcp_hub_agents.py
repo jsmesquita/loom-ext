@@ -17,7 +17,7 @@ from app.dependencies.auth import UserInfo
 from app.models.agent import Agent
 from app.models.invocation import Invocation
 from app.models.session import InvocationSession
-from app.services.local_invoke import invoke_local_agent_stream, is_local_agent
+from app.services.local_invoke import invoke_local_agent_stream, is_external_agent, is_local_agent
 from app.services.mcp_hub import user_can_invoke_agent
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ def exposed_agent_name(agent: Agent, *, collision: bool) -> str:
 
 
 def _agent_invocable(agent: Agent) -> bool:
-    # Hub v1 focuses on source=local; other sources listed only if RBAC ok
+    # Hub v1 focuses on source=external (BYO); other sources listed only if RBAC ok
     # (invoke returns hub_agent_non_local_not_supported until wired).
     _ = agent
     return True

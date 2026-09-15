@@ -283,6 +283,27 @@ def _seed_demo_tag_profiles(eng) -> None:
         session.close()
 
 
+def _migrate_agent_source_local_to_external(eng) -> None:
+    """Rename agents.source 'local' → 'external' (BYO agents; Dev-approved rename)."""
+    insp = inspect(eng)
+    if "agents" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("agents")}
+    if "source" not in cols:
+        return
+    with eng.begin() as conn:
+        result = conn.execute(
+            text("UPDATE agents SET source = 'external' WHERE source = 'local'")
+        )
+        # rowcount is dialect-dependent; log best-effort
+        try:
+            n = result.rowcount
+        except Exception:
+            n = -1
+        if n and n > 0:
+            logger.info("Migrated %s agent row(s) source=local → external", n)
+
+
 def init_db() -> None:
     """
     Initialize the database by creating all tables.
@@ -294,6 +315,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _migrate_add_columns(engine)
+    _migrate_agent_source_local_to_external(engine)
     _backfill_session_users(engine)
     _seed_default_tags(engine)
     _seed_demo_tag_profiles(engine)

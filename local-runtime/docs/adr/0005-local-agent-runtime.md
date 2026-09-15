@@ -2,8 +2,7 @@
 
 - **Status:** Aceita — M1 implementado (`local-runtime/services/agent-runtime` + BFF)
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-14 — ver extensão [ADR 0013](0013-local-agent-templates-worker-pool.md)
-  (templates + pool de workers)
+- **Atualizado:** 2026-09-15 — catálogo `source=external` (label UI **BYO agent**); legado `source=local` migrado
 - **Decisores:** Mantenedores da plataforma
 - **Relacionada a:**
   [ADR 0003 — LiteLLM](0003-litellm-as-llm-gateway.md),
@@ -11,6 +10,11 @@
   [ADR 0001 — IdP](0001-keycloak-as-identity-provider.md),
   [ADR 0006 — Extensão local-runtime](0006-local-runtime-extension-repo.md),
   [ADR 0013 — Templates + worker pool](0013-local-agent-templates-worker-pool.md)
+
+> **Vocabulário (2026-09-15):** no banco/API o valor canônico é
+> `source=external` (agent fora do AgentCore, data plane = agent-runtime).
+> Na UI o label é **BYO agent**. O nome do serviço `agent-runtime` e paths
+> `local_invoke` / `local-runtime` permanecem (histórico do fork).
 
 ## Problema
 

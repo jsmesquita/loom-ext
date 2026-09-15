@@ -8,10 +8,48 @@ import time
 from typing import Any, Iterator
 
 from agent_runtime.application.ports import LlmGateway, McpToolsClient, SessionStore
+from agent_runtime.domain.approval import policy_matches_any
 from agent_runtime.domain.contract import assistant_message, sse
 from agent_runtime.domain.errors import AgentRuntimeError
 
 logger = logging.getLogger("agent_runtime")
+
+
+def _gate_tool_call(
+    *,
+    sessions: SessionStore,
+    session_id: str,
+    tool_names: list[str],
+    policies: list[dict[str, Any]],
+    timeout_s: float,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """If a loop_hook policy matches, yield gate metadata and wait for BFF decision.
+
+    Returns (sse_event_data_or_None, decision_or_None).
+    decision is approved|trusted|denied|timeout when a gate ran; None if no policy.
+    """
+    policy = policy_matches_any(tool_names, policies)
+    if policy is None:
+        return None, None
+    mode = str(policy.get("approval_mode") or "require_approval")
+    gate = {
+        "session_id": session_id,
+        "tool_name": tool_names[0] if tool_names else "",
+        "candidate_tool_names": tool_names,
+        "policy_name": policy.get("name") or "",
+        "policy_type": policy.get("policy_type") or "loop_hook",
+        "approval_mode": mode,
+        "timeout_seconds": int(policy.get("timeout_seconds") or timeout_s),
+    }
+    if mode == "notify_only":
+        logger.info(
+            "approval notify_only policy=%r tool=%r — continuing without gate",
+            policy.get("name"),
+            tool_names,
+        )
+        return None, None
+    sessions.arm_approval(session_id)
+    return gate, None  # caller yields SSE then waits
 
 
 def max_sessions() -> int:
@@ -124,6 +162,35 @@ def run_invoke(
                         "code": "mcp_denied",
                     })
                     return
+                # HITL loop_hook: match original MCP name and exposed keyed name.
+                gate, early_decision = _gate_tool_call(
+                    sessions=sessions,
+                    session_id=session_id,
+                    tool_names=[original, keyed],
+                    policies=list(payload.get("approval_policies") or []),
+                    timeout_s=timeout_s,
+                )
+                if gate is not None:
+                    yield sse("approval_needed", gate)
+                    if early_decision is None:
+                        wait_s = float(gate.get("timeout_seconds") or timeout_s)
+                        decision = sessions.wait_approval(session_id, wait_s)
+                    else:
+                        decision = early_decision
+                    if decision not in ("approved", "trusted"):
+                        yield sse("chunk", {
+                            "text": f"\n[tool:{original} denied by approval ({decision})]\n",
+                        })
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": call_id,
+                            "content": json.dumps({
+                                "error": "user_denied",
+                                "decision": decision,
+                                "tool": original,
+                            })[:800],
+                        })
+                        continue
                 yield sse("chunk", {"text": f"\n[tool:{original}]\n"})
                 t_tool = time.time()
                 result = mcp.call_tool(

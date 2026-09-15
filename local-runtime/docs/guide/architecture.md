@@ -29,7 +29,7 @@ Relacionados: [ADR 0005](../adr/0005-local-agent-runtime.md),
 [overview](overview.md), [scalability-reliability.md](scalability-reliability.md),
 [CHANGELOG-LOOM-FORK.md](../CHANGELOG-LOOM-FORK.md).
 
-**Última revisão:** 2026-09-14 (ADR 0013 templates + worker pool; templates MCP; LiteLLM ≠ Bedrock)
+**Última revisão:** 2026-09-15 (`source=external` / BYO; HITL local; ADR 0013 templates + worker pool; templates MCP; LiteLLM ≠ Bedrock)
 
 ---
 
@@ -104,7 +104,7 @@ flowchart TB
   BE -->|OIDC bootstrap / JWKS config| IDPL
   BE -->|service token| HUB
   BE -->|service token| MCPR
-  BE -->|source=local invoke| AR
+  BE -->|source=external BYO invoke| AR
   BE -->|source=deploy/harness invoke_agent| AC
   BE --> LL
   HUB -->|materialize / tools / agents| BE
@@ -191,7 +191,7 @@ flowchart TB
   HSVC --> ORM
   INV --> ORM
   INV --> AUTH
-  INV -->|source=local| AR
+  INV -->|source=external BYO| AR
   INV -->|source=deploy/harness| AC
 ```
 
@@ -305,7 +305,7 @@ Objetos/colunas que **não** devem ser tratados como “só local-runtime”: vi
 | `mcp_servers.runtime_state` | **Coluna (fork)** | Estado do runtime local |
 | `mcp_servers.template_params` / `secret_refs` | **Colunas (fork)** | Params + refs de segredo |
 | `mcp_servers.delegation_mode` / OBO fields | **Colunas (fork)** | Delegação m2m/obo |
-| Seeds Orientador (`agents` source=local) | **Dados (fork)** | Linhas/config; tabela `agents` continua Core |
+| Seeds Orientador (`agents` source=external / BYO) | **Dados (fork)** | Linhas/config; tabela `agents` continua Core |
 
 ```mermaid
 erDiagram
@@ -365,7 +365,7 @@ Não misturar com schema/ORM do Loom Core.
 | Modelo LLM | LiteLLM (único gateway do control plane) | OpenAI / Anthropic / …; `cursor-local` → cursor-adapter. Bedrock → AgentCore |
 | IdP ativo | **Fork (PG)** `identity_providers` | Keycloak/Entra (**local-runtime** / SaaS) |
 | Template stdio | **Fork** colunas em `mcp_servers` | **mcp-runtime** YAML allowlist |
-| Template agent local | **Extension** YAML (`agent-runtime/templates/`, [spec 026](../specs/026-local-agent-templates.md)); loader `yaml_agent_templates` | `agents.source=local` + escopo materializado no invoke ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md)) |
+| Template agent BYO | **Extension** YAML (`agent-runtime/templates/`, [spec 026](../specs/026-local-agent-templates.md)); loader `yaml_agent_templates` | `agents.source=external` + escopo materializado no invoke ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md)) |
 
 ```text
                     ┌──────────────────────────┐

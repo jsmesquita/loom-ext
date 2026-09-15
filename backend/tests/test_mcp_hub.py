@@ -189,7 +189,7 @@ class TestMcpHub(unittest.TestCase):
             name="Orientador Demo",
             region="us-east-1",
             account_id="1",
-            source="local",
+            source="external",
             tags='{"loom:group":"demo"}',
             available_qualifiers='["DEFAULT"]',
         )
@@ -199,7 +199,7 @@ class TestMcpHub(unittest.TestCase):
             name="Other",
             region="us-east-1",
             account_id="1",
-            source="local",
+            source="external",
             tags='{"loom:group":"test"}',
             available_qualifiers='["DEFAULT"]',
         )
@@ -239,7 +239,7 @@ class TestMcpHub(unittest.TestCase):
             name="A",
             region="us-east-1",
             account_id="1",
-            source="local",
+            source="external",
             tags='{"loom:group":"demo"}',
             available_qualifiers='["DEFAULT"]',
         )
