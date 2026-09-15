@@ -295,9 +295,6 @@ class HubHandler(BaseHTTPRequestHandler):
         if path not in ("/mcp", "/"):
             _json(self, 404, {"error": {"message": "not_found"}})
             return
-        if not self.loom.service_token():
-            _json(self, 503, {"jsonrpc": "2.0", "id": None, "error": {"code": -32000, "message": "hub_unavailable"}})
-            return
         token = _bearer(self)
         if not token:
             self._unauthorized_mcp(jsonrpc=True)
@@ -306,6 +303,8 @@ class HubHandler(BaseHTTPRequestHandler):
         if identity is None:
             self._unauthorized_mcp(jsonrpc=True)
             return
+        # Raw bearer for Loom API calls (dual-aud / exchange — ADR 0015).
+        identity = {**identity, "access_token": token}
         try:
             body = _read_json(self)
         except json.JSONDecodeError:
@@ -414,7 +413,10 @@ def serve(
     bind_port = port or int(os.environ.get("MCP_HUB_PORT", "8790"))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     if not HubHandler.loom.service_token():
-        logger.error("MCP_HUB_SERVICE_TOKEN unset — fail-closed")
+        logger.warning(
+            "MCP_HUB_SERVICE_TOKEN unset — admin/BFF routes fail-closed; "
+            "MCP data-plane uses user JWT (ADR 0015)"
+        )
     if not HubHandler.tokens.oidc_issuer():
         logger.error("MCP_HUB_OIDC_ISSUER unset — IDE OAuth will fail-closed")
     elif HubHandler.tokens.warm_jwks():

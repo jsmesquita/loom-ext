@@ -20,6 +20,7 @@ Todos os ADRs do fork moram **aqui** (`local-runtime/docs/adr/`). Não criar em 
 - [0012 — Agents como tools MCP](0012-mcp-hub-agents-as-tools.md)
 - [0013 — Agents locais por template + pool de workers](0013-local-agent-templates-worker-pool.md)
 - [0014 — MCP host isolado — Loom só registra HTTP](0014-mcp-host-isolated-http-registration.md)
+- [0015 — MCP Hub como cliente das APIs Loom](0015-mcp-hub-as-loom-api-client.md) — **Aceito** (fase 5)
 
 ## Specs Hub (relacionadas)
 

@@ -60,6 +60,7 @@ def build_session_allowlist(
         mcp_client_slug=slug,
         client_status=status,
         grants=profile_grants,
+        access_token=str(identity.get("access_token") or ""),
     )
     if code != 200:
         empty = {

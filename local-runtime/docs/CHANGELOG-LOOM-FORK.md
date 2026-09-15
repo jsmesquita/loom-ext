@@ -43,7 +43,7 @@ guias em [`guide/`](guide/). Pointers: Cursor
 | MCP catalog | **Core** alinhado upstream (sse / streamable_http) | Sem stdio/`MCP_RUNTIME_URL`; hosts na extension ([ADR 0014](adr/0014-mcp-host-isolated-http-registration.md)) |
 | Invoke local / Orientador / LiteLLM | **Core** (`local_invoke`, `local_agents`) + LiteLLM em `etc/` + agent-runtime na extension | `invocations.py` / `local_invoke.py` sensíveis |
 | Extension Host UI | **Core** fino (`frontend/src/extensions/*`, `App.tsx`, vite alias) | Manter host estável (ADR 0006) |
-| Hub MCP (OAuth, clients, agents-as-tools) | **Core** BFF (`mcp_hub*`) + **Extension** sidecar `mcp-hub` + plugin Local runtime | BFF no Loom; data plane fora; telemetria Spec 028 em DB `mcp_hub` + attributions Core |
+| Hub MCP (OAuth, clients, agents-as-tools) | **Core** BFF fino (`/info` + ext proxy) + **Extension** sidecar `mcp-hub` + plugin | Data-plane no Hub (ADR 0015); telemetria Spec 028 em DB `mcp_hub` |
 | Model Configuration (Agent Detail) | **Core** UI (`AgentDetailPage`, `DeploymentPanel`, `api/agents.ts`) | Merge Bedrock+LiteLLM no cliente — ver entrada 2026-09-14 |
 | Docs do fork | **Docs** em `local-runtime/docs/` (ADRs, specs, guias) | Baixo — sem `docs/` na raiz |
 
@@ -74,6 +74,35 @@ Checklist pós-merge:
 ---
 
 ## Registro
+
+### 2026-09-15 — ADR 0015 fase 5: remover data-plane Hub do Core
+
+| | |
+|--|--|
+| **Zona** | **Core** + Docs |
+| **Ok Dev** | Sim — limpeza pós-validação Cursor/Hub |
+| **Motivo** | Hub já materializa/call via JWT user + upstream; Core não deve conhecer o data-plane Hub |
+| **Removido** | Rotas `/api/mcp/hub/materialize*` / `tools/call` / `agents/*`; `mcp_hub_agents.py`; helpers materialize/call em `mcp_hub.py` |
+| **Mantido** | `GET /api/mcp/hub/info`; `/api/ext/local-runtime/*` + `mcp_hub_proxy` (ops/plugin; service token Hub↔BFF) |
+| **Docs** | ADR 0015 Aceito; architecture L2/L3; Hub README |
+
+### 2026-09-15 — ADR 0015 parcial: Hub data-plane sem `/api/mcp/hub`
+
+| | |
+|--|--|
+| **Zona** | **Extension** (`mcp-hub`) + Keycloak realm mapper |
+| **Ok Dev** | Sim — implementar, sem commit até teste |
+| **Hub** | Catálogo Loom ∩ grants; `tools/call` upstream; agents via `/api/agents` + SSE |
+| **Auth** | Dual-aud interim (`loom-mcp-hub` + `loom-frontend`); exchange opcional via env |
+| **Core** | Rotas `/api/mcp/hub/*` ainda existem (não usadas no data-plane Hub); remover após validação |
+
+### 2026-09-15 — ADR 0015 rascunho: Hub como cliente Loom
+
+| | |
+|--|--|
+| **Zona** | **Docs** |
+| **Ok Dev** | Sim (rascunho) |
+| **Docs** | [ADR 0015](adr/0015-mcp-hub-as-loom-api-client.md) — norte syncável; Core sem `/api/mcp/hub` |
 
 ### 2026-09-15 — Varredura: resíduos mcp-runtime no Core
 

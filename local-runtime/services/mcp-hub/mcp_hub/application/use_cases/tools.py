@@ -35,6 +35,7 @@ def list_agent_tools(
     code, payload = loom.materialize_agents(
         subject=str(identity["sub"]),
         groups=list(identity.get("groups") or []),
+        access_token=str(identity.get("access_token") or ""),
     )
     if code != 200:
         logger.warning("materialize-agents failed status=%s", code)
@@ -76,7 +77,12 @@ def handle_agent_tool_call(
         sid = str(arguments.get("session_id") or "")
         if not sid:
             return {"jsonrpc": "2.0", "error": {"code": -32602, "message": "session_id_required"}}
-        status, result = loom.agents_run(subject=subject, groups=groups, session_id=sid)
+        status, result = loom.agents_run(
+            subject=subject,
+            groups=groups,
+            session_id=sid,
+            access_token=str(identity.get("access_token") or ""),
+        )
         if status == 403:
             return {"error": {"code": -32003, "message": "forbidden"}}
         if status != 200:
@@ -87,7 +93,12 @@ def handle_agent_tool_call(
         sid = str(arguments.get("session_id") or "")
         if not sid:
             return {"error": {"code": -32602, "message": "session_id_required"}}
-        status, result = loom.agents_run(subject=subject, groups=groups, session_id=sid)
+        status, result = loom.agents_run(
+            subject=subject,
+            groups=groups,
+            session_id=sid,
+            access_token=str(identity.get("access_token") or ""),
+        )
         if status == 403:
             return {"error": {"code": -32003, "message": "forbidden"}}
         if status != 200:
@@ -104,7 +115,11 @@ def handle_agent_tool_call(
     if name.startswith("agent__"):
         agent_id = agent_map.get(name)
         if agent_id is None:
-            code, payload = loom.materialize_agents(subject=subject, groups=groups)
+            code, payload = loom.materialize_agents(
+                subject=subject,
+                groups=groups,
+                access_token=str(identity.get("access_token") or ""),
+            )
             if code == 200:
                 for row in payload.get("agents") or []:
                     if row.get("exposed_name") == name:
@@ -133,6 +148,7 @@ def handle_agent_tool_call(
             mcp_client_slug=str(identity.get("mcp_client_slug") or "") or None,
             hub_session_id=str(identity.get("connection_id") or "") or None,
             wait_mode=wait,
+            access_token=str(identity.get("access_token") or ""),
         )
         if status == 403:
             return {"error": {"code": -32003, "message": "agent_forbidden"}}
@@ -286,6 +302,14 @@ def call_tool(
         _emit(phase="denied", error_code="tool_not_allowed")
         return {"error": {"code": -32003, "message": "tool_not_allowed"}}
     server_id, original = mapping[name]
+    endpoint_url = ""
+    for entry in allow.get("entries") or []:
+        try:
+            if int(entry.get("server_id")) == server_id:
+                endpoint_url = str(entry.get("endpoint_url") or "")
+                break
+        except (TypeError, ValueError):
+            continue
     status, result = loom.tools_call(
         subject=subject,
         groups=groups,
@@ -293,6 +317,8 @@ def call_tool(
         arguments=arguments,
         server_id=server_id,
         original_tool_name=original,
+        endpoint_url=endpoint_url,
+        access_token=str(identity.get("access_token") or ""),
     )
     if status == 403:
         _emit(phase="denied", error_code="tool_not_allowed", server_id=server_id, original=original)

@@ -9,9 +9,10 @@ Microsoft Entra ID / …) — **no mint**, no `hs_…` Bearer in `mcp.json`.
 IDE (URL only)
   → 401 + Protected Resource Metadata
   → Active IdP (Keycloak / Microsoft Entra ID) Authorization Code + PKCE
-  → Bearer access_token (aud=loom-mcp-hub)
-  → mcp-hub validates JWKS → grants for user groups
-      → Loom BFF materialize / tools/call (service token)
+  → Bearer access_token (aud=loom-mcp-hub [+ loom-frontend dual-aud])
+  → mcp-hub validates JWKS → grants ∩ Loom catalog (user JWT)
+      → tools/call → MCP upstream HTTP
+      → agent__* → /api/agents (+ SSE)
 ```
 
 Host port loopback-only (`127.0.0.1:8790`). Health: `GET /health`.
@@ -51,8 +52,9 @@ active IdP, register an equivalent public PKCE app instead.
 
 | Variable | Purpose |
 |----------|---------|
-| `MCP_HUB_SERVICE_TOKEN` | Hub ↔ Loom only |
-| `LOOM_BACKEND_URL` | Hub → backend |
+| `MCP_HUB_SERVICE_TOKEN` | Hub admin ↔ Loom BFF plugin proxy (not IDE data-plane) |
+| `LOOM_BACKEND_URL` | Hub → backend (user JWT / dual-aud) |
+| `LOOM_ACCESS_TOKEN_MODE` | `dual_aud` (default) or `token_exchange` |
 | `MCP_HUB_DATABASE_URL` | Postgres DSN for Hub store (dedicated DB `mcp_hub`) |
 | `MCP_HUB_STORE_PATH` | Optional JSON path (fallback / migrate source) |
 | `MCP_HUB_MIGRATE_JSON` | `force` to re-import JSON over PG |

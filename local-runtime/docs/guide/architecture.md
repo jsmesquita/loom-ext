@@ -102,16 +102,16 @@ flowchart TB
   FE -->|REST + user JWT| BE
   BE --> PG
   BE -->|OIDC bootstrap / JWKS config| IDPL
-  BE -->|service token| HUB
+  BE -->|service token ops/plugin| HUB
   BE -->|source=external BYO invoke| AR
   BE -->|source=deploy/harness invoke_agent| AC
   BE --> LL
-  HUB -->|materialize / tools / agents| BE
+  HUB -->|user JWT dual-aud / exchange| BE
   HUB --> HSTORE
   HUB -->|validate access_token| IDPL
   AR --> LL
   AR -->|catálogo streamable_http| MCPR
-  HUB -.->|tools via BFF → mesmos URLs HTTP| MCPR
+  HUB -->|tools/call direto| MCPR
   AC --> BR
   LL --> PROV
   LL -->|cursor-local| CA
@@ -135,7 +135,7 @@ overlay: mcp-azure-devops / mcp-rancher / mcp-grafana
 Loom UI form: streamable_http + URL http://mcp-*:8787/mcp
                     │
                     ▼
-agent-runtime / Hub tools (via BFF) — HTTP `auth=none` (lateral trust nos pods)
+agent-runtime / Hub tools (upstream HTTP) — `auth=none` (lateral trust nos pods)
 ```
 
 O BFF **não** provisiona processos MCP (`MCP_RUNTIME_URL` removido). Stdio
@@ -173,21 +173,24 @@ flowchart LR
     HTTP[http_app<br/>MCP JSON-RPC + management]
     OAUTH[oauth<br/>JWT / JWKS]
     STORE[store<br/>Hub persistence]
-    LOOMC[loom_client<br/>BFF HTTP]
+    LOOMC[loom_client<br/>APIs nativas + upstream]
     ACC[access / naming]
   end
   BE[Loom Backend]
   IDP[IdP JWKS]
+  MCPU[MCP upstream HTTP]
 
   HTTP --> OAUTH
   HTTP --> STORE
   HTTP --> ACC
   HTTP --> LOOMC
   OAUTH --> IDP
-  LOOMC -->|service token| BE
+  LOOMC -->|user JWT| BE
+  LOOMC -->|tools/call| MCPU
 ```
 
-Fluxo: IDE OAuth → JWT → `tools/list` (grants + `agent__*` se habilitado) → `tools/call` → BFF.
+Fluxo (ADR 0015): IDE OAuth → JWT → `tools/list` (catálogo Loom ∩ grants +
+`agent__*`) → `tools/call` direto ao upstream MCP (agents via `/api/agents`).
 
 ### L3b — Backend BFF (fork-relevant)
 
@@ -195,16 +198,15 @@ Fluxo: IDE OAuth → JWT → `tools/list` (grants + `agent__*` se habilitado) �
 flowchart TB
   subgraph be[Backend FastAPI]
     AUTH[auth / idp ACL]
-    MCPR[routers mcp* / hub proxy]
+    MCPR[routers mcp* / hub info + ext proxy]
     INV[invocations<br/>adapter: local / agentcore / harness]
-    HSVC[mcp_hub* services]
+    HPROXY[mcp_hub_proxy<br/>ops → Hub]
     ORM[SQLAlchemy models]
   end
   AR[agent-runtime<br/>extensão local]
   AC[AgentCore / Harness AWS]
   MCPR --> AUTH
-  MCPR --> HSVC
-  HSVC --> ORM
+  MCPR --> HPROXY
   INV --> ORM
   INV --> AUTH
   INV -->|source=external BYO| AR

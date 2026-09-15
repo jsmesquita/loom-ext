@@ -119,6 +119,7 @@ class TestToolsUseCases(unittest.TestCase):
             "entries": [{
                 "server_id": 1,
                 "server_slug": "echo",
+                "endpoint_url": "http://mcp-echo:8787/mcp",
                 "tools": [{
                     "name": "ping",
                     "description": "ping",
@@ -126,6 +127,7 @@ class TestToolsUseCases(unittest.TestCase):
                 }],
             }],
         }
+        self.identity["access_token"] = "test-jwt"
         self.loom.agents_payload = {
             "agents": [{
                 "exposed_name": "agent__demo",

@@ -27,13 +27,16 @@ class ClientRecord(TypedDict, total=False):
     last_seen_at: str
 
 
-class HubIdentity(TypedDict):
+class HubIdentity(TypedDict, total=False):
     """Normalized identity after OAuth access-token validation."""
 
     sub: str
     username: str
     groups: list[str]
     connection_id: str
+    # Raw Hub access token (Token H). Used to call Loom APIs after dual-aud
+    # or token-exchange (ADR 0015). Never log this value.
+    access_token: str
 
 
 class ProfileGrantsPayload(TypedDict):

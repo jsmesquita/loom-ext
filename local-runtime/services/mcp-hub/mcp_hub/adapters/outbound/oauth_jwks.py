@@ -166,6 +166,7 @@ def validate_access_token(token: str) -> HubIdentity | None:
         "username": username,
         "groups": _extract_groups(claims),
         "connection_id": f"oauth:{sub}",
+        "access_token": token,
     }
 
 

@@ -1,42 +1,26 @@
-﻿"""MCP Hub BFF endpoints (ADR 0007 / 0008 / specs 016-022)."""
+﻿"""MCP Hub BFF — ops/plugin only (ADR 0015 phase 5).
+
+Data-plane (materialize / tools/call / agents) lives in the Hub sidecar.
+This module keeps:
+- public ``/api/mcp/hub/info`` (IDE OAuth resource URL)
+- ``/api/ext/local-runtime/*`` proxy to Hub admin APIs (service token Hub↔BFF)
+"""
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.dependencies.auth import UserInfo, require_scopes
 from app.services import mcp_hub as hub
-from app.services import mcp_hub_agents as hub_agents
 from app.services import mcp_hub_proxy as hub_proxy
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/mcp/hub", tags=["mcp-hub"])
 ext_router = APIRouter(prefix="/api/ext/local-runtime", tags=["local-runtime-ext"])
-
-
-class HubToolCallRequest(BaseModel):
-    subject: str = Field(..., min_length=1)
-    groups: list[str] = Field(default_factory=list)
-    tool_name: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
-    server_id: int | None = None
-    original_tool_name: str | None = None
-
-
-class MaterializeRequest(BaseModel):
-    subject: str = Field(..., min_length=1)
-    groups: list[str] = Field(default_factory=list)
-    connection_id: str | None = None
-    mcp_client_slug: str
-    client_status: str = "discovered"
-    grants: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ClientPatchRequest(BaseModel):
@@ -46,56 +30,9 @@ class ClientPatchRequest(BaseModel):
     agents_enabled: bool | None = None
 
 
-class MaterializeAgentsRequest(BaseModel):
-    subject: str = Field(..., min_length=1)
-    groups: list[str] = Field(default_factory=list)
-    contract_version: str | None = None
-
-
-class HubAgentInvokeRequest(BaseModel):
-    subject: str = Field(..., min_length=1)
-    groups: list[str] = Field(default_factory=list)
-    agent_id: int
-    prompt: str = Field(..., min_length=1)
-    session_id: str | None = None
-    mode: str = Field(default="async")
-    timeout_s: int = Field(default=120, ge=5, le=600)
-    # Hub profile allowlist ∩ agent MCP links (optional; omit = all linked MCPs)
-    hub_server_ids: list[int] | None = None
-    hub_tool_allowlists: dict[str, list[str]] | None = None
-    mcp_client_slug: str | None = None
-    hub_session_id: str | None = None
-    wait_mode: str | None = None
-
-
-class HubAgentRunQuery(BaseModel):
-    subject: str = Field(..., min_length=1)
-    groups: list[str] = Field(default_factory=list)
-
-
 class ClientGrantsRequest(BaseModel):
     group: str = Field(..., min_length=1, max_length=128)
     grants: list[dict[str, Any]] = Field(default_factory=list)
-
-
-def _require_service_token(authorization: str | None) -> None:
-    expected = hub.hub_service_token()
-    if not expected:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="hub_service_token_unset")
-    if not authorization or authorization != f"Bearer {expected}":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="unauthorized")
-
-
-def _user_from_hub_claims(subject: str, groups: list[str]) -> UserInfo:
-    from app.dependencies.auth import derive_scopes
-
-    return UserInfo(
-        sub=subject,
-        username=subject,
-        groups=list(groups or []),
-        scopes=derive_scopes(list(groups or [])),
-        idp_type="keycloak",
-    )
 
 
 @router.get("/info")
@@ -107,111 +44,6 @@ def hub_public_info() -> dict:
         "auth": "oauth",
         "contract_version": hub.CONTRACT_VERSION,
     }
-
-
-@router.post("/materialize-allowlist")
-def materialize_hub_allowlist(
-    body: MaterializeRequest,
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-) -> dict:
-    _require_service_token(authorization)
-    user = _user_from_hub_claims(body.subject, body.groups)
-    return hub.materialize_from_grants(
-        db,
-        user,
-        hub_session_id=body.connection_id or f"oauth:{body.subject}",
-        mcp_client_slug=body.mcp_client_slug,
-        client_status=body.client_status,
-        allowed_groups=[],
-        grants=body.grants,
-    )
-
-
-@router.post("/tools/call")
-def hub_tools_call(
-    body: HubToolCallRequest,
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-) -> dict:
-    _require_service_token(authorization)
-    user = _user_from_hub_claims(body.subject, body.groups)
-    result = hub.call_hub_tool(
-        db,
-        user,
-        body.tool_name,
-        body.arguments or {},
-        server_id=body.server_id,
-        original_tool_name=body.original_tool_name,
-    )
-    if result.get("denied"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result.get("error") or "denied")
-    return result
-
-
-@router.post("/materialize-agents")
-def materialize_hub_agents(
-    body: MaterializeAgentsRequest,
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-) -> dict:
-    _require_service_token(authorization)
-    user = _user_from_hub_claims(body.subject, body.groups)
-    return hub_agents.materialize_agents(db, user)
-
-
-@router.post("/agents/invoke")
-async def hub_agents_invoke(
-    body: HubAgentInvokeRequest,
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-) -> dict:
-    _require_service_token(authorization)
-    user = _user_from_hub_claims(body.subject, body.groups)
-    mode = body.mode if body.mode in ("async", "sync") else "async"
-    result = await hub_agents.start_agent_run(
-        db,
-        user,
-        agent_id=body.agent_id,
-        prompt=body.prompt,
-        session_id=body.session_id,
-        mode=mode,
-        timeout_s=body.timeout_s,
-        hub_server_ids=body.hub_server_ids,
-        hub_tool_allowlists=(
-            {int(k): list(v) for k, v in body.hub_tool_allowlists.items()}
-            if body.hub_tool_allowlists
-            else None
-        ),
-        mcp_client_slug=body.mcp_client_slug,
-        hub_session_id=body.hub_session_id,
-        wait_mode=body.wait_mode or ("complete" if mode == "sync" else "accepted"),
-    )
-    if result.get("denied"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result.get("error") or "denied")
-    if result.get("error") == "agent_not_found":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="agent_not_found")
-    if result.get("error"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.get("error"))
-    return result
-
-
-@router.post("/agents/runs/{session_id}")
-def hub_agents_run_status(
-    session_id: str,
-    body: HubAgentRunQuery,
-    authorization: str | None = Header(default=None),
-    db: Session = Depends(get_db),
-) -> dict:
-    """POST with claims (Hub cannot easily put subject on GET via urllib helpers)."""
-    _require_service_token(authorization)
-    user = _user_from_hub_claims(body.subject, body.groups)
-    result = hub_agents.get_run(db, user, session_id)
-    if result.get("denied"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result.get("error") or "denied")
-    if result.get("error") == "not_found":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return result
 
 
 @ext_router.get("/mcp-clients")
@@ -326,7 +158,6 @@ def _finops_by_slug(db: Session, *, hours: int, slug: str | None = None) -> list
     return rows
 
 
-@router.get("/analytics/summary")
 @ext_router.get("/analytics/summary")
 def analytics_summary(
     hours: int = 24,
@@ -354,7 +185,6 @@ def analytics_summary(
     return payload
 
 
-@router.get("/analytics/tools")
 @ext_router.get("/analytics/tools")
 def analytics_tools(
     hours: int = 24,
@@ -368,7 +198,6 @@ def analytics_tools(
     return payload
 
 
-@router.get("/analytics/errors")
 @ext_router.get("/analytics/errors")
 def analytics_errors(
     hours: int = 24,
