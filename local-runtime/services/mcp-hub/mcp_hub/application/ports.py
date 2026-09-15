@@ -45,6 +45,22 @@ class HubStore(Protocol):
 
     def delete_client(self, slug: str) -> bool: ...
 
+    def touch_last_seen(self, slug: str) -> None: ...
+
+    def record_telemetry(self, event: dict[str, Any]) -> None: ...
+
+    def analytics_summary(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]: ...
+
+    def analytics_tools(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]: ...
+
+    def analytics_errors(
+        self,
+        *,
+        hours: int = 24,
+        slug: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]: ...
+
 
 class LoomGateway(Protocol):
     """HTTP gateway to the Loom BFF (service token)."""
@@ -89,6 +105,9 @@ class LoomGateway(Protocol):
         timeout_s: int = 120,
         hub_server_ids: list[int] | None = None,
         hub_tool_allowlists: dict[str, list[str]] | None = None,
+        mcp_client_slug: str | None = None,
+        hub_session_id: str | None = None,
+        wait_mode: str | None = None,
     ) -> tuple[int, dict[str, Any]]: ...
 
     def agents_run(

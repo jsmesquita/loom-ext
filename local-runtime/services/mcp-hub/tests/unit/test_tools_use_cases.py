@@ -44,6 +44,27 @@ class FakeStore:
     def delete_client(self, slug: str) -> bool:
         return False
 
+    def touch_last_seen(self, slug: str) -> None:
+        return None
+
+    def record_telemetry(self, event: dict[str, Any]) -> None:
+        self.last_event = event
+
+    def analytics_summary(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]:
+        return {"hours": hours, "active_clients": 0, "clients": [], "totals": {}}
+
+    def analytics_tools(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]:
+        return {"hours": hours, "tools": []}
+
+    def analytics_errors(
+        self,
+        *,
+        hours: int = 24,
+        slug: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        return {"hours": hours, "limit": limit, "by_code": [], "events": []}
+
 
 class FakeLoom:
     def __init__(self) -> None:

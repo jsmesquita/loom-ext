@@ -60,6 +60,12 @@ class Invocation(Base):
     thinking_text = Column(Text, nullable=True)
     response_text = Column(Text, nullable=True)
 
+    # Hub attribution (Spec 028)
+    source = Column(String, nullable=True, index=True)
+    mcp_client_slug = Column(String, nullable=True, index=True)
+    hub_session_id = Column(String, nullable=True, index=True)
+    wait_mode = Column(String, nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
 
     # Relationship to session
@@ -97,5 +103,9 @@ class Invocation(Base):
             "prompt_text": self.prompt_text,
             "thinking_text": self.thinking_text,
             "response_text": self.response_text,
+            "source": self.source,
+            "mcp_client_slug": self.mcp_client_slug,
+            "hub_session_id": self.hub_session_id,
+            "wait_mode": self.wait_mode,
             "created_at": (self.created_at.isoformat() + "Z") if self.created_at else None,
         }

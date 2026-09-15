@@ -157,6 +157,13 @@ def _migrate_add_columns(eng) -> None:
         ("agents", "vpc_config_id", "INTEGER"),
         ("agents", "status_reason", "TEXT"),
         ("agents", "agent_framework", "VARCHAR"),
+        ("invocation_sessions", "source", "VARCHAR"),
+        ("invocation_sessions", "mcp_client_slug", "VARCHAR"),
+        ("invocation_sessions", "hub_session_id", "VARCHAR"),
+        ("invocations", "source", "VARCHAR"),
+        ("invocations", "mcp_client_slug", "VARCHAR"),
+        ("invocations", "hub_session_id", "VARCHAR"),
+        ("invocations", "wait_mode", "VARCHAR"),
     ]
 
     is_postgres = eng.dialect.name == "postgresql"
@@ -282,6 +289,9 @@ def init_db() -> None:
 
     Called during application startup.
     """
+    # Register ORM models on Base.metadata (incl. InvocationToolSpan / Spec 028).
+    import app.models  # noqa: F401
+
     Base.metadata.create_all(bind=engine)
     _migrate_add_columns(engine)
     _backfill_session_users(engine)

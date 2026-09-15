@@ -46,6 +46,87 @@ export type ServerAccessRule = {
   allowed_tool_names: string[];
 };
 
+export type HubAnalyticsClientRow = {
+  slug: string;
+  lists: number;
+  calls: number;
+  denials: number;
+  errors: number;
+  agent_calls: number;
+  avg_duration_ms: number;
+  finops?: HubAnalyticsFinopsRow;
+};
+
+export type HubAnalyticsFinopsRow = {
+  slug: string;
+  invocations: number;
+  input_tokens: number;
+  output_tokens: number;
+  estimated_cost: number;
+  avg_duration_ms: number;
+};
+
+export type HubAnalyticsSummary = {
+  hours: number;
+  active_clients: number;
+  clients: HubAnalyticsClientRow[];
+  totals: {
+    lists: number;
+    calls: number;
+    denials: number;
+    errors: number;
+    agent_calls: number;
+  };
+  finops?: {
+    invocations: number;
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost: number;
+    by_client: HubAnalyticsFinopsRow[];
+  };
+};
+
+export type HubAnalyticsToolRow = {
+  tool_name: string;
+  slug: string;
+  calls: number;
+  denials: number;
+  errors: number;
+  avg_duration_ms: number;
+};
+
+export type HubAnalyticsTools = {
+  hours: number;
+  tools: HubAnalyticsToolRow[];
+};
+
+export type HubAnalyticsErrorEvent = {
+  occurred_at: string;
+  event_type?: string | null;
+  slug: string;
+  tool_name?: string | null;
+  original_tool?: string | null;
+  server_id?: number | null;
+  phase: string;
+  error_code?: string | null;
+  reason?: string | null;
+  duration_ms?: number | null;
+  request_id?: string | null;
+};
+
+export type HubAnalyticsErrorCodeRow = {
+  error_code: string;
+  phase: string;
+  count: number;
+};
+
+export type HubAnalyticsErrors = {
+  hours: number;
+  limit: number;
+  by_code: HubAnalyticsErrorCodeRow[];
+  events: HubAnalyticsErrorEvent[];
+};
+
 /** Full IdP profiles (GROUP_SCOPES); not short loom:group tags. */
 export const LOOM_PROFILES = [
   "g-users-demo",

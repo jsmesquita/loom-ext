@@ -248,6 +248,11 @@ export function LocalRuntimePage({ canRead, canWrite }: Props) {
 
       <HubInfoSection hubInfo={hubInfo} canRead={canRead} error={error} />
 
+      <p className="text-[11px] text-muted-foreground">
+        Usage, adoption, and FinOps live under Operate →{" "}
+        <span className="font-medium text-foreground">Hub analytics</span>.
+      </p>
+
       <section className="rounded-lg border bg-card p-4 space-y-3 text-sm">
         <ClientsList
           clients={clients}

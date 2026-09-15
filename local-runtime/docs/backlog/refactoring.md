@@ -30,9 +30,19 @@ Fluxo:
 
 ## Itens abertos
 
-_(nenhum)_
+_(nenhum aberto no momento)_
 
 ## Itens encerrados
+
+### REF-2026-09-14-10 — Telemetria MCP Clients (uso, adesão, FinOps)
+
+| Campo | Valor |
+|-------|--------|
+| **Data** | 2026-09-14 |
+| **Área** | `mcp-hub` + BFF `mcp_hub_agents` + agent-runtime + plugin |
+| **Paths** | Spec [028](../specs/028-mcp-hub-telemetry-analytics.md); plano [mcp-hub-telemetry-analytics-plan.md](mcp-hub-telemetry-analytics-plan.md) |
+| **Status** | done (baseline A–D) |
+| **Notas** | Events Hub + last_seen; Core attribution/tokens/spans; BFF analytics+FinOps; UI Local Runtime. |
 
 ### REF-2026-09-14-09 — remover shims de compat hexagonal
 

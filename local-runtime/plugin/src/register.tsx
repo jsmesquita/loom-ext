@@ -1,6 +1,7 @@
 import type { LoomExtensionHost } from "./host-types";
+import { HubAnalyticsPage } from "./pages/HubAnalyticsPage";
 import { LocalRuntimePage } from "./pages/LocalRuntimePage";
-import { Server } from "lucide-react";
+import { Activity, Server } from "lucide-react";
 
 /**
  * Loom Extension Host entry (ADR 0006).
@@ -20,6 +21,19 @@ export function register(host: LoomExtensionHost): void {
         canWrite={hasScope("mcp:write")}
         canRead={hasScope("mcp:read")}
       />
+    ),
+  });
+
+  host.addExtension({
+    id: "hub-analytics",
+    nav: {
+      section: "operate",
+      label: "Hub analytics",
+      icon: Activity,
+      requiredScopes: ["mcp:read"],
+    },
+    render: ({ hasScope }) => (
+      <HubAnalyticsPage canRead={hasScope("mcp:read")} />
     ),
   });
 }

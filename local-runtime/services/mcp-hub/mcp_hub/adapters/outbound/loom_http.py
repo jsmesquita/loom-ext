@@ -120,6 +120,9 @@ def agents_invoke(
     timeout_s: int = 120,
     hub_server_ids: list[int] | None = None,
     hub_tool_allowlists: dict[str, list[str]] | None = None,
+    mcp_client_slug: str | None = None,
+    hub_session_id: str | None = None,
+    wait_mode: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
     body: dict[str, Any] = {
         "subject": subject,
@@ -134,6 +137,12 @@ def agents_invoke(
         body["hub_server_ids"] = hub_server_ids
     if hub_tool_allowlists is not None:
         body["hub_tool_allowlists"] = hub_tool_allowlists
+    if mcp_client_slug:
+        body["mcp_client_slug"] = mcp_client_slug
+    if hub_session_id:
+        body["hub_session_id"] = hub_session_id
+    if wait_mode:
+        body["wait_mode"] = wait_mode
     return _request(
         "POST",
         "/api/mcp/hub/agents/invoke",
@@ -216,6 +225,9 @@ class LoomHttpGateway:
         timeout_s: int = 120,
         hub_server_ids: list[int] | None = None,
         hub_tool_allowlists: dict[str, list[str]] | None = None,
+        mcp_client_slug: str | None = None,
+        hub_session_id: str | None = None,
+        wait_mode: str | None = None,
     ) -> tuple[int, dict[str, Any]]:
         return agents_invoke(
             subject=subject,
@@ -227,6 +239,9 @@ class LoomHttpGateway:
             timeout_s=timeout_s,
             hub_server_ids=hub_server_ids,
             hub_tool_allowlists=hub_tool_allowlists,
+            mcp_client_slug=mcp_client_slug,
+            hub_session_id=hub_session_id,
+            wait_mode=wait_mode,
         )
 
     def agents_run(

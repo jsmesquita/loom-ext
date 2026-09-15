@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from mcp_hub.application.ports import HubStore, LoomGateway
 from mcp_hub.application.use_cases.session_allowlist import build_session_allowlist
 from mcp_hub.domain.naming import expose_tools
+from mcp_hub.domain.telemetry import new_request_id, safe_error_reason, telemetry_event
 
 logger = logging.getLogger("mcp_hub")
 
@@ -128,6 +130,9 @@ def handle_agent_tool_call(
             mode=mode,
             hub_server_ids=hub_server_ids,
             hub_tool_allowlists=hub_tool_allowlists,
+            mcp_client_slug=str(identity.get("mcp_client_slug") or "") or None,
+            hub_session_id=str(identity.get("connection_id") or "") or None,
+            wait_mode=wait,
         )
         if status == 403:
             return {"error": {"code": -32003, "message": "agent_forbidden"}}
@@ -150,12 +155,34 @@ def list_tools(
     store: HubStore,
     loom: LoomGateway,
 ) -> list[dict[str, Any]]:
-    _slug, allow, _mapping, client = build_session_allowlist(identity, store=store, loom=loom)
+    t0 = time.perf_counter()
+    request_id = new_request_id()
+    slug, allow, _mapping, client = build_session_allowlist(identity, store=store, loom=loom)
     tools, _ = expose_tools(allow.get("entries") or [])
     if client and str(client.get("status") or "") == "enabled":
         agent_tools, _amap = list_agent_tools(identity, client, loom=loom)
         tools = list(tools) + list(agent_tools)
         tools.sort(key=lambda t: t.get("name") or "")
+    duration_ms = int((time.perf_counter() - t0) * 1000)
+    if slug and slug != "unbound":
+        store.touch_last_seen(slug)
+    store.record_telemetry(
+        telemetry_event(
+            event_type="tools_list",
+            request_id=request_id,
+            hub_session_id=str(identity.get("connection_id") or ""),
+            mcp_client_slug=slug if slug != "unbound" else None,
+            subject=str(identity.get("sub") or ""),
+            groups=list(identity.get("groups") or []),
+            phase="ok",
+            duration_ms=duration_ms,
+            meta={
+                "tool_count": len(tools),
+                "server_count": len(allow.get("entries") or []),
+                "agents_enabled": bool(client and client.get("agents_enabled")),
+            },
+        )
+    )
     return tools
 
 
@@ -168,13 +195,40 @@ def call_tool(
     loom: LoomGateway,
 ) -> dict[str, Any]:
     """Return JSON-RPC ``result`` or ``error`` object (without jsonrpc/id wrapper)."""
+    t0 = time.perf_counter()
+    request_id = new_request_id()
     groups = list(identity.get("groups") or [])
-    _slug, allow, mapping, client = build_session_allowlist(identity, store=store, loom=loom)
+    slug, allow, mapping, client = build_session_allowlist(identity, store=store, loom=loom)
+    if slug and slug != "unbound":
+        store.touch_last_seen(slug)
     if not isinstance(arguments, dict):
         arguments = {}
+    hub_session_id = str(identity.get("connection_id") or "")
+    subject = str(identity.get("sub") or "")
+
+    def _emit(*, phase: str, error_code: str | None = None, meta: dict[str, Any] | None = None, server_id: int | None = None, original: str | None = None) -> None:
+        store.record_telemetry(
+            telemetry_event(
+                event_type="tools_call",
+                request_id=request_id,
+                hub_session_id=hub_session_id,
+                mcp_client_slug=slug if slug != "unbound" else None,
+                subject=subject,
+                groups=groups,
+                tool_name=name,
+                original_tool=original,
+                server_id=server_id,
+                phase=phase,
+                error_code=error_code,
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+                meta=meta,
+            )
+        )
+
     agents_on = bool(client and client.get("agents_enabled") and client.get("status") == "enabled")
     if name.startswith("agent__") or name in ("agent_run_status", "agent_run_result"):
         if not agents_on:
+            _emit(phase="denied", error_code="agents_disabled")
             return {"error": {"code": -32003, "message": "agents_disabled"}}
         _agent_tools, agent_map = list_agent_tools(identity, client or {}, loom=loom)
         hub_server_ids: list[int] = []
@@ -191,6 +245,7 @@ def call_tool(
                 if isinstance(t, dict) and t.get("name")
             ]
             hub_tool_allowlists[str(sid)] = names
+        identity = {**identity, "mcp_client_slug": slug if slug != "unbound" else None}
         handled = handle_agent_tool_call(
             identity,
             name,
@@ -201,13 +256,38 @@ def call_tool(
             hub_tool_allowlists=hub_tool_allowlists,
         )
         if "error" in handled and "result" not in handled:
+            err = handled.get("error") or {}
+            reason = safe_error_reason(err)
+            _emit(
+                phase="denied" if err.get("code") == -32003 else "error",
+                error_code=str(err.get("message") or "error"),
+                meta={
+                    "wait": arguments.get("wait"),
+                    "agent_id": agent_map.get(name),
+                    **({"reason": reason} if reason else {}),
+                },
+            )
             return {"error": handled["error"]}
-        return {"result": handled.get("result") or {}}
+        result = handled.get("result") or {}
+        structured = result.get("structuredContent") if isinstance(result, dict) else None
+        meta: dict[str, Any] = {"wait": arguments.get("wait")}
+        if isinstance(structured, dict):
+            if structured.get("session_id"):
+                meta["loom_session_id"] = structured.get("session_id")
+            if structured.get("invocation_id"):
+                meta["loom_invocation_id"] = structured.get("invocation_id")
+            if structured.get("agent_id") is not None:
+                meta["agent_id"] = structured.get("agent_id")
+            if structured.get("status"):
+                meta["run_status"] = structured.get("status")
+        _emit(phase="ok", meta=meta, original=None)
+        return {"result": result}
     if name not in mapping:
+        _emit(phase="denied", error_code="tool_not_allowed")
         return {"error": {"code": -32003, "message": "tool_not_allowed"}}
     server_id, original = mapping[name]
     status, result = loom.tools_call(
-        subject=str(identity["sub"]),
+        subject=subject,
         groups=groups,
         tool_name=name,
         arguments=arguments,
@@ -215,7 +295,22 @@ def call_tool(
         original_tool_name=original,
     )
     if status == 403:
+        _emit(phase="denied", error_code="tool_not_allowed", server_id=server_id, original=original)
         return {"error": {"code": -32003, "message": "tool_not_allowed"}}
     if status != 200 or not result.get("success"):
+        reason = safe_error_reason(
+            result.get("error")
+            or result.get("message")
+            or result.get("detail")
+            or f"http_{status}"
+        )
+        _emit(
+            phase="error",
+            error_code="tool_call_failed",
+            server_id=server_id,
+            original=original,
+            meta={"reason": reason, "http_status": status} if reason else {"http_status": status},
+        )
         return {"error": {"code": -32004, "message": "tool_call_failed"}}
+    _emit(phase="ok", server_id=server_id, original=original)
     return {"result": result.get("result") or {}}

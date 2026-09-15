@@ -601,6 +601,24 @@ function AppContent() {
                 onClick={() => setActivePersona("admin")}
               />
             )}
+            {extensions
+              .filter((ext) => ext.nav.section === "operate")
+              .filter((ext) =>
+                (ext.nav.requiredScopes ?? []).length === 0
+                || (ext.nav.requiredScopes ?? []).some((scope) => effectiveHasScope(scope as Scope)),
+              )
+              .map((ext) => {
+                const Icon = ext.nav.icon ?? Server;
+                return (
+                  <SidebarItem
+                    key={ext.id}
+                    icon={Icon}
+                    label={ext.nav.label}
+                    active={activePersona === ext.id}
+                    onClick={() => setActivePersona(ext.id)}
+                  />
+                );
+              })}
           </SidebarSection>
           <SidebarSection label={t("nav.sections.system")}>
             {(effectiveHasScope("settings:read") || effectiveHasScope("tagging:read") || effectiveHasScope("tagging:write")) && (

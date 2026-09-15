@@ -44,3 +44,4 @@ Todas as specs do fork moram **aqui** (`local-runtime/docs/specs/`). Não criar 
 - [023 — Profile grants](023-mcp-hub-profile-grants.md)
 - [024 — OAuth](024-mcp-hub-oauth.md)
 - [025 — Agents as tools](025-mcp-hub-agents-as-tools.md)
+- [028 — Telemetry & analytics](028-mcp-hub-telemetry-analytics.md)

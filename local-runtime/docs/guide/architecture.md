@@ -334,7 +334,7 @@ erDiagram
 
 | Store | Onde | Conteúdo |
 |-------|------|----------|
-| **Postgres DB `mcp_hub`** | Mesmo servidor PG do compose; DSN `MCP_HUB_DATABASE_URL` | Canais MCP, `agents_enabled`, profile grants, session bindings (`hub_clients`, `hub_session_bindings`) |
+| `hub_clients` / `hub_session_bindings` / **`hub_telemetry_events`** | **local-runtime** Hub PG | Canais MCP, grants, session bindings, tráfego list/call (Spec 028) |
 | **JSON fallback** | `MCP_HUB_STORE_PATH` (só se DSN unset; ou fonte de migrate) | Snapshot legado |
 | **Keycloak DB** | Container Keycloak | Realm `loom`, users/groups, client `loom-mcp-hub` |
 | **Templates YAML** | `local-runtime/services/mcp-runtime/templates/` (ro no container) | Allowlist stdio — dono: **mcp-runtime** |
@@ -344,9 +344,13 @@ erDiagram
 ```text
 hub_clients(slug PK, display_name, declared_*, status, agents_enabled, grants JSONB, first_seen_at, last_seen_at)
 hub_session_bindings(hub_session_id PK, mcp_client_slug FK, bound_at)
+hub_telemetry_events(id, occurred_at, event_type, request_id, hub_session_id, mcp_client_slug,
+                     subject_hash, idp_groups, tool_name, original_tool, server_id, phase,
+                     error_code, duration_ms, meta)  -- Spec 028; ensure DDL em pg_store
 ```
 
-Init: `etc/docker/postgres-init/02-mcp-hub-db.sql` (volume Postgres **novo**).  
+Init DB: `etc/docker/postgres-init/02-mcp-hub-db.sql` (volume Postgres **novo**).  
+Tabelas Hub: ensure DDL no `pg_store` (incl. `hub_telemetry_events`).  
 Não misturar com schema/ORM do Loom Core.
 
 ---

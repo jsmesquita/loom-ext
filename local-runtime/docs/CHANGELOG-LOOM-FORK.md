@@ -43,7 +43,7 @@ guias em [`guide/`](guide/). Pointers: Cursor
 | MCP catalog / stdio / access | **Core** + templates na extension | Conferir `mcp.py`, `mcp_access.py`, forms |
 | Invoke local / Orientador / LiteLLM | **Core** (`local_invoke`, `local_agents`) + LiteLLM em `etc/` + agent-runtime na extension | `invocations.py` / `local_invoke.py` sensíveis |
 | Extension Host UI | **Core** fino (`frontend/src/extensions/*`, `App.tsx`, vite alias) | Manter host estável (ADR 0006) |
-| MCP Hub (OAuth, clients, agents-as-tools) | **Core** BFF (`mcp_hub*`) + **Extension** sidecar `mcp-hub` + plugin Local runtime | BFF no Loom; data plane fora |
+| Hub MCP (OAuth, clients, agents-as-tools) | **Core** BFF (`mcp_hub*`) + **Extension** sidecar `mcp-hub` + plugin Local runtime | BFF no Loom; data plane fora; telemetria Spec 028 em DB `mcp_hub` + attributions Core |
 | Model Configuration (Agent Detail) | **Core** UI (`AgentDetailPage`, `DeploymentPanel`, `api/agents.ts`) | Merge Bedrock+LiteLLM no cliente — ver entrada 2026-09-14 |
 | Docs do fork | **Docs** em `local-runtime/docs/` (ADRs, specs, guias) | Baixo — sem `docs/` na raiz |
 
@@ -74,6 +74,44 @@ Checklist pós-merge:
 ---
 
 ## Registro
+
+### 2026-09-14 — Hub analytics Errors tab
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Extension** | mcp-hub `analytics_errors` + plugin Errors tab | Recent `phase=error\|denied` + rollup `error_code` (sem payload) |
+| **Core** | BFF `/analytics/errors` proxy | `mcp:read` |
+| **Docs** | Spec 028 | Endpoint + critério UI |
+
+### 2026-09-14 — Hub analytics Operate nav (tabs)
+
+**Motivo Core:** host `App.tsx` só renderizava extensions em Build; Operate precisa
+do mesmo loop para o item `hub-analytics`.
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Core** | `frontend/src/App.tsx` | Render extensions `nav.section === "operate"` |
+| **Extension** | plugin `register` + `HubAnalyticsPage` | Menu Operate; tabs Overview / Tools / Adoption / FinOps (EN) |
+| **Docs** | overview, development, CHANGELOG | Nav Operate + Spec 028 UI |
+
+### 2026-09-14 — Telemetria MCP Clients (uso / adesão / FinOps)
+
+**Motivo Core:** atribuição Hub→invocation (`source`/`mcp_client_slug`/`hub_session_id`/`wait_mode`),
+timings/tokens a partir de SSE, tabela `invocation_tool_spans`, BFF analytics + join FinOps.
+Autorizado pelo Dev (“aplicar tudo”).
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Docs** | Spec 028, plano REF-10, architecture, CHANGELOG | DDL events, privacy, fases A–D done |
+| **Extension** | `mcp-hub` store/ports/tools/http + plugin `HubAnalyticsSection` | `hub_telemetry_events`, last_seen, admin_patch/grants events, analytics APIs, UI 24h/7d/30d |
+| **Extension** | `agent-runtime` invoke | SSE `tool_span` por MCP call |
+| **Core** | `invocation(s)`, `invocation_tool_spans`, `mcp_hub_agents`, `db` migrate, BFF analytics | attribution + timings/tokens; FinOps join |
+
+### 2026-09-14 — Plano telemetria MCP Clients (uso / adesão / FinOps)
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Docs** | `backlog/mcp-hub-telemetry-analytics-plan.md`, `backlog/refactoring.md` (REF-10) | Events Hub, last_seen, ligação invocations, spans, rollups; Core B1 com gate |
 
 ### 2026-09-14 — Local agents: MCP/A2A persistidos + limits + Hub ∩ grants
 

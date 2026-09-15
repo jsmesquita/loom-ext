@@ -20,6 +20,10 @@ class InvocationSession(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     user_id = Column(String, nullable=True, index=True)
     hidden_at = Column(DateTime, nullable=True)  # Set when user hides the session from their view
+    # Hub / channel attribution (Spec 028)
+    source = Column(String, nullable=True, index=True)  # chat | mcp_hub
+    mcp_client_slug = Column(String, nullable=True, index=True)
+    hub_session_id = Column(String, nullable=True, index=True)
 
     # Relationships
     agent = relationship("Agent", back_populates="sessions")
@@ -35,5 +39,8 @@ class InvocationSession(Base):
             "created_at": (self.created_at.isoformat() + "Z") if self.created_at else None,
             "user_id": self.user_id,
             "hidden_at": (self.hidden_at.isoformat() + "Z") if self.hidden_at else None,
+            "source": self.source,
+            "mcp_client_slug": self.mcp_client_slug,
+            "hub_session_id": self.hub_session_id,
             "invocations": [inv.to_dict() for inv in self.invocations] if self.invocations else [],
         }

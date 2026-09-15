@@ -154,11 +154,13 @@ def get_run(db: Session, user: UserInfo, session_id: str) -> dict[str, Any]:
     }
 
 
-def _parse_sse_chunks(raw: str) -> tuple[str, bool, str | None]:
-    """Extract concatenated chunk text from SSE; detect session_end / error."""
+def _parse_sse_chunks(raw: str) -> tuple[str, bool, str | None, dict, list[dict]]:
+    """Extract chunk text, session_end/error, session_end metrics, tool spans."""
     texts: list[str] = []
     saw_end = False
     err: str | None = None
+    end_meta: dict = {}
+    spans: list[dict] = []
     for block in raw.split("\n\n"):
         if not block.strip():
             continue
@@ -179,11 +181,16 @@ def _parse_sse_chunks(raw: str) -> tuple[str, bool, str | None]:
             piece = payload.get("text") or payload.get("content") or ""
             if piece:
                 texts.append(str(piece))
+        elif event == "tool_span":
+            if isinstance(payload, dict):
+                spans.append(payload)
         elif event == "session_end":
             saw_end = True
+            if isinstance(payload, dict):
+                end_meta = payload
         elif event == "error":
             err = str(payload.get("message") or "invoke_error")
-    return "".join(texts), saw_end, err
+    return "".join(texts), saw_end, err, end_meta, spans
 
 
 async def _consume_local_stream(
@@ -196,7 +203,11 @@ async def _consume_local_stream(
     groups: list[str] | None = None,
     hub_server_ids: list[int] | None = None,
     hub_tool_allowlists: dict[int, list[str]] | None = None,
+    mcp_client_slug: str | None = None,
+    hub_session_id: str | None = None,
+    wait_mode: str | None = None,
 ) -> None:
+    _ = mcp_client_slug, hub_session_id, wait_mode
     db = SessionLocal()
     try:
         from app.dependencies.auth import UserInfo, derive_scopes
@@ -244,7 +255,7 @@ async def _consume_local_stream(
         ):
             buf.append(piece)
         raw = "".join(buf)
-        text, saw_end, err = _parse_sse_chunks(raw)
+        text, saw_end, err, end_meta, spans = _parse_sse_chunks(raw)
         # Re-load after stream commits
         invocation = db.query(Invocation).filter(Invocation.invocation_id == invocation_id).first()
         session = db.query(InvocationSession).filter(InvocationSession.session_id == session_id).first()
@@ -252,6 +263,37 @@ async def _consume_local_stream(
             return
         if text and not invocation.response_text:
             invocation.response_text = text
+        if end_meta:
+            for attr, key, caster in (
+                ("client_invoke_time", "client_invoke_time", float),
+                ("client_done_time", "client_done_time", float),
+                ("client_duration_ms", "client_duration_ms", float),
+                ("input_tokens", "input_tokens", int),
+                ("output_tokens", "output_tokens", int),
+                ("estimated_cost", "estimated_cost", float),
+            ):
+                if end_meta.get(key) is None:
+                    continue
+                try:
+                    setattr(invocation, attr, caster(end_meta[key]))
+                except (TypeError, ValueError):
+                    pass
+            if end_meta.get("estimated_cost") is not None:
+                invocation.cost_source = invocation.cost_source or "estimated"
+        if spans:
+            from app.models.invocation_tool_span import InvocationToolSpan
+
+            for sp in spans:
+                db.add(
+                    InvocationToolSpan(
+                        invocation_id=invocation_id,
+                        server_name=str(sp.get("server_name") or "") or None,
+                        tool_name=str(sp.get("tool_name") or "unknown"),
+                        duration_ms=float(sp["duration_ms"]) if sp.get("duration_ms") is not None else None,
+                        status=str(sp.get("status") or "ok"),
+                        error_code=str(sp["error_code"]) if sp.get("error_code") else None,
+                    )
+                )
         if err and invocation.status != "complete":
             invocation.status = "error"
             invocation.error_message = err
@@ -284,6 +326,10 @@ def _create_session_and_invocation(
     agent: Agent,
     prompt: str,
     session_id: str | None,
+    *,
+    mcp_client_slug: str | None = None,
+    hub_session_id: str | None = None,
+    wait_mode: str | None = None,
 ) -> tuple[InvocationSession, Invocation]:
     qualifier = "DEFAULT"
     available = agent.get_available_qualifiers() if hasattr(agent, "get_available_qualifiers") else ["DEFAULT"]
@@ -299,6 +345,12 @@ def _create_session_and_invocation(
         if session.user_id and session.user_id not in (user.username, user.sub):
             raise PermissionError("session_forbidden")
         session.status = "pending"
+        if mcp_client_slug and not session.mcp_client_slug:
+            session.mcp_client_slug = mcp_client_slug
+        if hub_session_id and not session.hub_session_id:
+            session.hub_session_id = hub_session_id
+        if not session.source:
+            session.source = "mcp_hub"
     else:
         session = InvocationSession(
             agent_id=agent.id,
@@ -307,6 +359,9 @@ def _create_session_and_invocation(
             status="pending",
             created_at=datetime.utcnow(),
             user_id=user.username or user.sub,
+            source="mcp_hub",
+            mcp_client_slug=mcp_client_slug,
+            hub_session_id=hub_session_id,
         )
         db.add(session)
     invocation = Invocation(
@@ -315,6 +370,11 @@ def _create_session_and_invocation(
         status="pending",
         prompt_text=prompt,
         created_at=datetime.utcnow(),
+        source="mcp_hub",
+        mcp_client_slug=mcp_client_slug,
+        hub_session_id=hub_session_id,
+        wait_mode=wait_mode,
+        client_invoke_time=time.time(),
     )
     db.add(invocation)
     db.commit()
@@ -334,6 +394,9 @@ async def start_agent_run(
     timeout_s: int = 120,
     hub_server_ids: list[int] | None = None,
     hub_tool_allowlists: dict[int, list[str]] | None = None,
+    mcp_client_slug: str | None = None,
+    hub_session_id: str | None = None,
+    wait_mode: str | None = None,
 ) -> dict[str, Any]:
     if "invoke" not in (user.scopes or set()):
         return {"error": "invoke_scope_required", "denied": True}
@@ -345,7 +408,16 @@ async def start_agent_run(
     if not is_local_agent(agent):
         return {"error": "hub_agent_non_local_not_supported", "denied": False}
     try:
-        session, invocation = _create_session_and_invocation(db, user, agent, prompt, session_id)
+        session, invocation = _create_session_and_invocation(
+            db,
+            user,
+            agent,
+            prompt,
+            session_id,
+            mcp_client_slug=mcp_client_slug,
+            hub_session_id=hub_session_id,
+            wait_mode=wait_mode or ("complete" if mode == "sync" else "accepted"),
+        )
     except PermissionError:
         return {"error": "session_forbidden", "denied": True}
     except ValueError as exc:
@@ -362,6 +434,9 @@ async def start_agent_run(
         "groups": list(user.groups or []),
         "hub_server_ids": hub_server_ids,
         "hub_tool_allowlists": hub_tool_allowlists,
+        "mcp_client_slug": mcp_client_slug,
+        "hub_session_id": hub_session_id,
+        "wait_mode": wait_mode,
     }
 
     if mode == "sync":
