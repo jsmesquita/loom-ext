@@ -8,7 +8,7 @@ from typing import Any
 from mcp_hub.application.ports import HubStore, LoomGateway
 from mcp_hub.application.use_cases.session_allowlist import build_session_allowlist
 from mcp_hub.domain.naming import expose_tools
-from mcp_hub.domain.telemetry import new_request_id, telemetry_event
+from mcp_hub.domain.telemetry import new_request_id, safe_error_reason, telemetry_event
 
 logger = logging.getLogger("mcp_hub")
 
@@ -257,10 +257,15 @@ def call_tool(
         )
         if "error" in handled and "result" not in handled:
             err = handled.get("error") or {}
+            reason = safe_error_reason(err)
             _emit(
                 phase="denied" if err.get("code") == -32003 else "error",
                 error_code=str(err.get("message") or "error"),
-                meta={"wait": arguments.get("wait"), "agent_id": agent_map.get(name)},
+                meta={
+                    "wait": arguments.get("wait"),
+                    "agent_id": agent_map.get(name),
+                    **({"reason": reason} if reason else {}),
+                },
             )
             return {"error": handled["error"]}
         result = handled.get("result") or {}
@@ -293,7 +298,19 @@ def call_tool(
         _emit(phase="denied", error_code="tool_not_allowed", server_id=server_id, original=original)
         return {"error": {"code": -32003, "message": "tool_not_allowed"}}
     if status != 200 or not result.get("success"):
-        _emit(phase="error", error_code="tool_call_failed", server_id=server_id, original=original)
+        reason = safe_error_reason(
+            result.get("error")
+            or result.get("message")
+            or result.get("detail")
+            or f"http_{status}"
+        )
+        _emit(
+            phase="error",
+            error_code="tool_call_failed",
+            server_id=server_id,
+            original=original,
+            meta={"reason": reason, "http_status": status} if reason else {"http_status": status},
+        )
         return {"error": {"code": -32004, "message": "tool_call_failed"}}
     _emit(phase="ok", server_id=server_id, original=original)
     return {"result": result.get("result") or {}}

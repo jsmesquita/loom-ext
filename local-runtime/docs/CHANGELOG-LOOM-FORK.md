@@ -75,6 +75,25 @@ Checklist pós-merge:
 
 ## Registro
 
+### 2026-09-14 — Hub analytics Errors tab
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Extension** | mcp-hub `analytics_errors` + plugin Errors tab | Recent `phase=error\|denied` + rollup `error_code` (sem payload) |
+| **Core** | BFF `/analytics/errors` proxy | `mcp:read` |
+| **Docs** | Spec 028 | Endpoint + critério UI |
+
+### 2026-09-14 — Hub analytics Operate nav (tabs)
+
+**Motivo Core:** host `App.tsx` só renderizava extensions em Build; Operate precisa
+do mesmo loop para o item `hub-analytics`.
+
+| Zona | Path | Nota |
+|------|------|------|
+| **Core** | `frontend/src/App.tsx` | Render extensions `nav.section === "operate"` |
+| **Extension** | plugin `register` + `HubAnalyticsPage` | Menu Operate; tabs Overview / Tools / Adoption / FinOps (EN) |
+| **Docs** | overview, development, CHANGELOG | Nav Operate + Spec 028 UI |
+
 ### 2026-09-14 — Telemetria MCP Clients (uso / adesão / FinOps)
 
 **Motivo Core:** atribuição Hub→invocation (`source`/`mcp_client_slug`/`hub_session_id`/`wait_mode`),

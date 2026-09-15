@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from mcp_hub.domain.telemetry import subject_hash, telemetry_event
+from mcp_hub.domain.telemetry import safe_error_reason, subject_hash, telemetry_event
 
 
 class TestTelemetry(unittest.TestCase):
@@ -16,6 +16,15 @@ class TestTelemetry(unittest.TestCase):
     def test_subject_hash_empty(self) -> None:
         self.assertEqual(subject_hash(""), "")
         self.assertEqual(subject_hash(None), "")
+
+    def test_safe_error_reason_truncates_and_redacts(self) -> None:
+        long = "x" * 400
+        self.assertTrue(safe_error_reason(long).endswith("…"))
+        self.assertLessEqual(len(safe_error_reason(long)), 280)
+        redacted = safe_error_reason("boom Authorization: Bearer abc.def")
+        self.assertIn("[redacted]", redacted)
+        self.assertNotIn("abc.def", redacted)
+        self.assertEqual(safe_error_reason({"message": "child closed stdout"}), "child closed stdout")
 
     def test_telemetry_event_shape(self) -> None:
         ev = telemetry_event(

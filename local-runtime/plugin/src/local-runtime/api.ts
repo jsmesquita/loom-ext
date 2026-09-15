@@ -1,6 +1,8 @@
 import { apiFetch } from "@/api/client";
 import type {
+  HubAnalyticsErrors,
   HubAnalyticsSummary,
+  HubAnalyticsTools,
   HubInfo,
   McpClientGrant,
   McpHubClient,
@@ -73,4 +75,17 @@ export async function deleteMcpClient(slug: string): Promise<void> {
 
 export async function fetchAnalyticsSummary(hours = 24): Promise<HubAnalyticsSummary> {
   return apiFetch<HubAnalyticsSummary>(`/api/ext/local-runtime/analytics/summary?hours=${hours}`);
+}
+
+export async function fetchAnalyticsTools(hours = 24): Promise<HubAnalyticsTools> {
+  return apiFetch<HubAnalyticsTools>(`/api/ext/local-runtime/analytics/tools?hours=${hours}`);
+}
+
+export async function fetchAnalyticsErrors(
+  hours = 24,
+  limit = 100,
+): Promise<HubAnalyticsErrors> {
+  return apiFetch<HubAnalyticsErrors>(
+    `/api/ext/local-runtime/analytics/errors?hours=${hours}&limit=${limit}`,
+  );
 }

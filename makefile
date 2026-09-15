@@ -27,7 +27,7 @@ help:
 	@echo ""
 	@echo "  Frontend: http://localhost:5173   Backend: http://localhost:8000/docs"
 	@echo "  Keycloak: http://localhost:8081   (admin console user: admin)"
-	@echo "  Extension nav: Local runtime (mcp:read)"
+	@echo "  Extension nav: Local runtime (Build) · Hub analytics (Operate)"
 	@echo ""
 	@echo "  Set LOOM_AWS_CREDS_DIR to your ~/.aws to exercise AWS-backed features."
 

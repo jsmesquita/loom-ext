@@ -137,6 +137,19 @@ class HubHandler(BaseHTTPRequestHandler):
             slug = (qs.get("slug") or [None])[0]
             _json(self, 200, self.store.analytics_tools(hours=hours, slug=slug or None))
             return
+        if path == "/v1/analytics/errors":
+            if not self._require_service():
+                return
+            qs = parse_qs(parsed.query)
+            hours = int((qs.get("hours") or ["24"])[0] or 24)
+            slug = (qs.get("slug") or [None])[0]
+            limit = int((qs.get("limit") or ["100"])[0] or 100)
+            _json(
+                self,
+                200,
+                self.store.analytics_errors(hours=hours, slug=slug or None, limit=limit),
+            )
+            return
         if path.startswith("/v1/clients/"):
             if not self._require_service():
                 return

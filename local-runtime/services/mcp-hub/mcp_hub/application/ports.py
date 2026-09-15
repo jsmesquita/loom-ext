@@ -53,6 +53,14 @@ class HubStore(Protocol):
 
     def analytics_tools(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]: ...
 
+    def analytics_errors(
+        self,
+        *,
+        hours: int = 24,
+        slug: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]: ...
+
 
 class LoomGateway(Protocol):
     """HTTP gateway to the Loom BFF (service token)."""

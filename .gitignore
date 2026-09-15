@@ -8,11 +8,13 @@ node_modules
 dist
 build
 tmp
+.tmp
 
 # files
 *.tsbuildinfo
 .env
 .env.*
+.tmp/*
 !.env.example
 .cursor/mcp.json
 common*.sh

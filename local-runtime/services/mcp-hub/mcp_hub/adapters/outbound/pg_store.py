@@ -592,3 +592,89 @@ class PostgresHubStore:
                 for r in rows
             ],
         }
+
+    def analytics_errors(
+        self,
+        *,
+        hours: int = 24,
+        slug: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        hours = max(1, min(int(hours or 24), 24 * 90))
+        limit = max(1, min(int(limit or 100), 500))
+        params: list[Any] = [hours]
+        where = (
+            "occurred_at >= now() - (%s || ' hours')::interval "
+            "AND phase IN ('error', 'denied')"
+        )
+        if slug:
+            where += " AND mcp_client_slug = %s"
+            params.append(slug)
+        params.append(limit)
+        with self._lock:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT
+                      occurred_at,
+                      event_type,
+                      COALESCE(mcp_client_slug, '') AS slug,
+                      COALESCE(tool_name, '') AS tool_name,
+                      original_tool,
+                      server_id,
+                      phase,
+                      error_code,
+                      duration_ms,
+                      request_id,
+                      COALESCE(meta->>'reason', '') AS reason
+                    FROM hub_telemetry_events
+                    WHERE {where}
+                    ORDER BY occurred_at DESC
+                    LIMIT %s
+                    """,
+                    tuple(params),
+                ).fetchall()
+                by_code = conn.execute(
+                    f"""
+                    SELECT
+                      COALESCE(NULLIF(error_code, ''), '(none)') AS error_code,
+                      phase,
+                      COUNT(*) AS n
+                    FROM hub_telemetry_events
+                    WHERE {where}
+                    GROUP BY 1, 2
+                    ORDER BY n DESC
+                    LIMIT 50
+                    """,
+                    tuple(params[:-1]),
+                ).fetchall()
+        return {
+            "hours": hours,
+            "limit": limit,
+            "by_code": [
+                {
+                    "error_code": r["error_code"],
+                    "phase": r["phase"],
+                    "count": int(r["n"] or 0),
+                }
+                for r in by_code
+            ],
+            "events": [
+                {
+                    "occurred_at": r["occurred_at"].isoformat()
+                    if hasattr(r["occurred_at"], "isoformat")
+                    else str(r["occurred_at"] or ""),
+                    "event_type": r["event_type"],
+                    "slug": r["slug"] or "(unknown)",
+                    "tool_name": r["tool_name"] or None,
+                    "original_tool": r["original_tool"],
+                    "server_id": int(r["server_id"]) if r["server_id"] is not None else None,
+                    "phase": r["phase"],
+                    "error_code": r["error_code"],
+                    "reason": (r["reason"] or None) or None,
+                    "duration_ms": int(r["duration_ms"]) if r["duration_ms"] is not None else None,
+                    "request_id": r["request_id"],
+                }
+                for r in rows
+            ],
+        }

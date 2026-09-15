@@ -42,4 +42,5 @@ extensão **local-runtime** (plugin UI + sidecars + docs do fork).
 | MCP Hub | http://127.0.0.1:8790 |
 | LiteLLM | http://127.0.0.1:4000 |
 
-Nav da extension: **Local runtime** (precisa `mcp:read`).
+Nav da extension: **Local runtime** (Build, `mcp:read`) e **Hub analytics**
+(Operate — Overview / Tools / Adoption / FinOps).

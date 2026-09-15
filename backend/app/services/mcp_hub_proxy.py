@@ -109,3 +109,15 @@ def analytics_tools(*, hours: int = 24, slug: str | None = None) -> tuple[int, d
     if slug:
         path = f"{path}&slug={quote(slug, safe='-_.')}"
     return _request("GET", path)
+
+
+def analytics_errors(
+    *,
+    hours: int = 24,
+    slug: str | None = None,
+    limit: int = 100,
+) -> tuple[int, dict[str, Any]]:
+    path = f"/v1/analytics/errors?hours={int(hours)}&limit={int(limit)}"
+    if slug:
+        path = f"{path}&slug={quote(slug, safe='-_.')}"
+    return _request("GET", path)

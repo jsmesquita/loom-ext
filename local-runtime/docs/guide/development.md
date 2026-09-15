@@ -46,6 +46,8 @@ make local.agent-runtime.test
 - Ops page: `pages/LocalRuntimePage.tsx` (orchestration) + pieces under
   `src/local-runtime/` (thin `api.ts`, Hub info, clients list, agents toggle,
   profile grants editor)
+- Operate: `pages/HubAnalyticsPage.tsx` — tabs Overview / Tools / Adoption / FinOps / Errors
+  (UI copy in English, Loom host pattern)
 
 Telas novas de ops → **plugin**, não páginas novas no `frontend/src/pages` do host,
 salvo impossibilidade (ver [rules.md](rules.md)).

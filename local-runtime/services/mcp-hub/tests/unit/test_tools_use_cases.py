@@ -56,6 +56,15 @@ class FakeStore:
     def analytics_tools(self, *, hours: int = 24, slug: str | None = None) -> dict[str, Any]:
         return {"hours": hours, "tools": []}
 
+    def analytics_errors(
+        self,
+        *,
+        hours: int = 24,
+        slug: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        return {"hours": hours, "limit": limit, "by_code": [], "events": []}
+
 
 class FakeLoom:
     def __init__(self) -> None:

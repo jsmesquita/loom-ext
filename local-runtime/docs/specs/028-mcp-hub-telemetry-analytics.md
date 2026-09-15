@@ -58,14 +58,18 @@ Tabela `invocation_tool_spans`:
 ```text
 GET /v1/analytics/summary?hours=24     # Hub (service token)
 GET /v1/analytics/tools?hours=24&slug=
+GET /v1/analytics/errors?hours=24&limit=100  # recent denied/error events + by_code
 GET /api/mcp/hub/analytics/summary     # BFF proxy + FinOps join Core
 GET /api/ext/local-runtime/analytics/summary
+GET /api/ext/local-runtime/analytics/errors
 ```
 
 ## 5. Privacy
 
 - `subject` em claro **não** na tabela de events (só hash).
 - Sem `arguments`, prompt ou response nos events.
+- Motivo operacional curto permitido em `meta.reason` (≤ ~280 chars, redacted),
+  ex.: falha stdio / HTTP — **não** corpo de tool result.
 - Escopo read: `mcp:read`.
 
 ## 6. Critérios de aceite
@@ -74,4 +78,4 @@ GET /api/ext/local-runtime/analytics/summary
 - [x] list/call gravam rows; deny com phase=denied
 - [x] last_seen move em call
 - [x] invocation Hub tem slug + duration + tokens quando SSE envia
-- [x] UI Local Runtime mostra summary 24h (plugin `HubAnalyticsSection`)
+- [x] UI Operate → Hub analytics: Overview / Tools / Errors / Adoption / FinOps

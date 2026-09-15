@@ -391,3 +391,18 @@ def analytics_tools(
     if code >= 400:
         raise HTTPException(status_code=code, detail=payload.get("error") or payload.get("detail") or "hub_error")
     return payload
+
+
+@router.get("/analytics/errors")
+@ext_router.get("/analytics/errors")
+def analytics_errors(
+    hours: int = 24,
+    slug: str | None = None,
+    limit: int = 100,
+    user: UserInfo = Depends(require_scopes("mcp:read")),
+) -> dict:
+    _ = user
+    code, payload = hub_proxy.analytics_errors(hours=hours, slug=slug, limit=limit)
+    if code >= 400:
+        raise HTTPException(status_code=code, detail=payload.get("error") or payload.get("detail") or "hub_error")
+    return payload

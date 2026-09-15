@@ -442,3 +442,76 @@ class FileHubStore:
             )
         tools.sort(key=lambda t: -t["calls"])
         return {"hours": hours, "tools": tools[:100]}
+
+    def analytics_errors(
+        self,
+        *,
+        hours: int = 24,
+        slug: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        from datetime import timedelta
+
+        hours = max(1, min(int(hours or 24), 24 * 90))
+        limit = max(1, min(int(limit or 100), 500))
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        with _lock:
+            events = list(_load().get("telemetry") or [])
+        filtered: list[dict[str, Any]] = []
+        code_counts: dict[tuple[str, str], int] = {}
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            phase = str(ev.get("phase") or "")
+            if phase not in ("error", "denied"):
+                continue
+            ts = str(ev.get("occurred_at") or "")
+            try:
+                occurred = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if occurred < cutoff:
+                continue
+            s = str(ev.get("mcp_client_slug") or "")
+            if slug and s != slug:
+                continue
+            code = str(ev.get("error_code") or "") or "(none)"
+            code_counts[(code, phase)] = code_counts.get((code, phase), 0) + 1
+            filtered.append(ev)
+        filtered.sort(key=lambda e: str(e.get("occurred_at") or ""), reverse=True)
+        by_code = [
+            {"error_code": code, "phase": phase, "count": n}
+            for (code, phase), n in sorted(code_counts.items(), key=lambda kv: -kv[1])[:50]
+        ]
+        out = []
+        for ev in filtered[:limit]:
+            dur = ev.get("duration_ms")
+            try:
+                duration_ms = int(dur) if dur is not None else None
+            except (TypeError, ValueError):
+                duration_ms = None
+            sid = ev.get("server_id")
+            try:
+                server_id = int(sid) if sid is not None else None
+            except (TypeError, ValueError):
+                server_id = None
+            out.append(
+                {
+                    "occurred_at": str(ev.get("occurred_at") or ""),
+                    "event_type": ev.get("event_type"),
+                    "slug": str(ev.get("mcp_client_slug") or "") or "(unknown)",
+                    "tool_name": ev.get("tool_name") or None,
+                    "original_tool": ev.get("original_tool"),
+                    "server_id": server_id,
+                    "phase": ev.get("phase"),
+                    "error_code": ev.get("error_code"),
+                    "reason": (
+                        str((ev.get("meta") or {}).get("reason") or "").strip() or None
+                        if isinstance(ev.get("meta"), dict)
+                        else None
+                    ),
+                    "duration_ms": duration_ms,
+                    "request_id": ev.get("request_id"),
+                }
+            )
+        return {"hours": hours, "limit": limit, "by_code": by_code, "events": out}
