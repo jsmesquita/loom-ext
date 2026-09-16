@@ -92,8 +92,9 @@ Valida access token localmente (JWKS do IdP ativo) **ou** via endpoint de
 introspecção do AS se o token for opaco — v1 preferir **JWT validável
 por JWKS** para o Hub não depender do BFF a cada request de auth.
 
-Service token `MCP_HUB_SERVICE_TOKEN` continua **só** Hub↔Loom
-(materialize / tools/call), nunca no IDE.
+Hub → Loom APIs nativas usam **user JWT** (dual-aud / token exchange —
+[ADR 0015](0015-mcp-hub-as-loom-api-client.md)). Ops UI chama Hub `/v1/*`
+com JWT SPA. Não há `MCP_HUB_SERVICE_TOKEN` no browser nem no data-plane.
 
 ### Fronteira Loom
 

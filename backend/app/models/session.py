@@ -20,8 +20,8 @@ class InvocationSession(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
     user_id = Column(String, nullable=True, index=True)
     hidden_at = Column(DateTime, nullable=True)  # Set when user hides the session from their view
-    # Hub / channel attribution (Spec 028)
-    source = Column(String, nullable=True, index=True)  # chat | mcp_hub
+    # Hub / channel attribution (optional; Spec 028)
+    source = Column(String, nullable=True, index=True)  # chat | hub | …
     mcp_client_slug = Column(String, nullable=True, index=True)
     hub_session_id = Column(String, nullable=True, index=True)
 

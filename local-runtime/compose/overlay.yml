@@ -40,8 +40,6 @@ x-mcp-runtime-common: &mcp-runtime-common
 services:
   backend:
     environment:
-      # Optional: shared token if mcp-* set MCP_RUNTIME_REQUIRE_AUTH=1
-      MCP_RUNTIME_TOKEN: ${MCP_RUNTIME_TOKEN:-loom-mcp-runtime-local}
       AGENT_RUNTIME_URL: http://agent-runtime:8766
       AGENT_RUNTIME_TOKEN: ${AGENT_RUNTIME_TOKEN:-loom-agent-runtime-local}
 

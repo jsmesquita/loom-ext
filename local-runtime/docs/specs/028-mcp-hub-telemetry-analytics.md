@@ -1,6 +1,8 @@
 # Spec 028 — Telemetria e analytics do MCP Hub
 
 - **Status:** Aceito (implementado baseline A–D, 2026-09-14)
+- **Atualizado:** 2026-09-15 — analytics no Hub `/v1/analytics/*` (plugin direto;
+  FinOps join BFF removido com ADR 0015)
 - **Data:** 2026-09-14
 - **Implementa:** plano [mcp-hub-telemetry-analytics-plan.md](../backlog/mcp-hub-telemetry-analytics-plan.md),
   [Spec 020](020-mcp-hub-observability.md)
@@ -56,13 +58,13 @@ Tabela `invocation_tool_spans`:
 ## 4. APIs
 
 ```text
-GET /v1/analytics/summary?hours=24     # Hub (service token)
+GET /v1/info
+GET /v1/analytics/summary?hours=24     # Hub; SPA JWT + mcp:read (ADR 0015)
 GET /v1/analytics/tools?hours=24&slug=
-GET /v1/analytics/errors?hours=24&limit=100  # recent denied/error events + by_code
-GET /api/mcp/hub/analytics/summary     # BFF proxy + FinOps join Core
-GET /api/ext/local-runtime/analytics/summary
-GET /api/ext/local-runtime/analytics/errors
+GET /v1/analytics/errors?hours=24&limit=100
 ```
+
+(Plugin chama o Hub direto; sem proxy `/api/mcp/hub` / `/api/ext/local-runtime`.)
 
 ## 5. Privacy
 

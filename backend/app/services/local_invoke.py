@@ -44,10 +44,6 @@ def is_external_agent(agent: Agent) -> bool:
     return (agent.source or "") in EXTERNAL_AGENT_SOURCES
 
 
-# Alias kept so older imports keep working during the rename.
-is_local_agent = is_external_agent
-
-
 def agent_runtime_base_url() -> str:
     return os.getenv("AGENT_RUNTIME_URL", "").strip().rstrip("/")
 

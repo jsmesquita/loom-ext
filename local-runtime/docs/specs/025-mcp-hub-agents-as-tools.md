@@ -1,8 +1,9 @@
 # Spec 025 — Agents Loom como tools MCP no Hub
 
-- **Status:** Rascunho
+- **Status:** Rascunho — **fluxo BFF `/api/mcp/hub/agents*` supersedido por [ADR 0015](../adr/0015-mcp-hub-as-loom-api-client.md)**
+  (`agent__*` → `/api/agents` com user JWT)
 - **Data:** 2026-09-14
-- **Atualizado:** 2026-09-14 — `wait=accepted` default + `agent_run_status` / `agent_run_result`
+- **Atualizado:** 2026-09-15 — ADR 0015
 - **Implementa:** [ADR 0012](../adr/0012-mcp-hub-agents-as-tools.md)
 - **Depende de:**
   [016](016-mcp-hub-contract.md),

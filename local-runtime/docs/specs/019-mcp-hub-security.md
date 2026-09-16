@@ -1,8 +1,9 @@
 # Spec 019 — Segurança do MCP Hub
 
-- **Status:** Rascunho
+- **Status:** Rascunho — **parcialmente supersedido por [ADR 0015](../adr/0015-mcp-hub-as-loom-api-client.md)**
+  (Hub → Loom com user JWT; ops `/v1/*` com JWT SPA; sem `MCP_HUB_SERVICE_TOKEN`)
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-14 — OAuth IdP ativo (Keycloak / Microsoft Entra ID); mint removido ([ADR 0011](../adr/0011-mcp-hub-oauth-idp.md))
+- **Atualizado:** 2026-09-15 — alinhar com ADR 0015 (service token Hub↔BFF removido)
 - **Implementa:** [ADR 0007](../adr/0007-mcp-hub.md), [ADR 0011](../adr/0011-mcp-hub-oauth-idp.md)
 - **Depende de:** [016](016-mcp-hub-contract.md), [017](017-mcp-hub-session.md),
   [024](024-mcp-hub-oauth.md), [018](018-mcp-hub-allowlist.md),

@@ -31,7 +31,7 @@ Specs/ADRs úteis: [0011 OAuth Hub](../adr/0011-mcp-hub-oauth-idp.md),
 | **A01** Broken Access Control | **Sim** | Checar scopes em toda rota; Hub: canal `enabled` + grants + RBAC `loom:group` em agents; não confiar só no UI |
 | **A02** Cryptographic Failures | **Sim** | TLS em prod; HTTPS IdP; não armazenar access token em `mcp.json`; cookies Secure/HttpOnly se session cookie |
 | **A03** Injection | **Sim** | SQL via SQLAlchemy/params; MCP tool args = dados; allowlist YAML nos pods `mcp-*` |
-| **A04** Insecure Design | **Parcial** | OAuth Hub (ADR 0011); ports/adapters não vazam service token ao browser |
+| **A04** Insecure Design | **Parcial** | OAuth Hub (ADR 0011/0015); JWT SPA nas ops; ports/adapters não vazam secrets ao browser |
 | **A05** Security Misconfiguration | **Sim** | Defaults fail-closed; portas Hub em loopback em local; não expor Docker ports abertos; desligar debug em prod |
 | **A06** Vulnerable Components | **Sim** | Pin deps; `npm`/`uv` audit periódico; imagens slim |
 | **A07** Identification & Auth Failures | **Sim** | Validar JWT (iss, aud, exp, JWKS); PKCE no IDE; reject `hs_…` |
@@ -81,7 +81,7 @@ Não inventar segundo protocolo de mint paralelo ao IdP.
 | Authz | Scope / grupo / ownership de session (`user_id`) — ex.: runs de agent |
 | Input | Validar body (Pydantic / checks); limites de tamanho em upload/prompt |
 | Erros | Mensagens genéricas ao client (`unauthorized`); detalhe só em log servidor |
-| Service token | `MCP_HUB_SERVICE_TOKEN` / `AGENT_RUNTIME_TOKEN`: rede interna, nunca no browser |
+| Service token | `AGENT_RUNTIME_TOKEN` (BFF↔runtime); Hub ops usa JWT SPA — sem service token no browser |
 | CORS | Origens explícitas em prod; não `*` com credentials |
 | Rate / abuse | Em local opcional; em prod considerar limite em Hub OAuth e invoke |
 
@@ -141,7 +141,7 @@ Varredura rápida pós-hexagonal (Fase 6):
 
 | Serviço | Auth fail-closed | Logs | Secrets |
 |---------|------------------|------|---------|
-| mcp-hub | OIDC unset / JWT fail → deny; service token required | JWT: tipo de erro / aud / azp — **não** Bearer; PG DSN sem password | `MCP_HUB_SERVICE_TOKEN`, DSN via env |
+| mcp-hub | OIDC unset / JWT fail → deny; `/v1/*` = SPA JWT + mcp scopes | JWT: tipo de erro / aud / azp — **não** Bearer; PG DSN sem password | DSN via env |
 | mcp-* hosts | Lateral trust (auth off); opt-in `MCP_RUNTIME_REQUIRE_AUTH` | stderr sanitize | secrets só no env do filho |
 | agent-runtime | Bearer runtime token | sem echo de token | `AGENT_RUNTIME_TOKEN` / bearer MCP no payload |
 | cursor-adapter | API key required for runs | erros tipados, sem key | `CURSOR_API_KEY` env |
