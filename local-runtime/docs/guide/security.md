@@ -13,7 +13,7 @@ Não é um curso OWASP completo — só o que costuma aparecer **aqui**.
 | Princípio | Prática |
 |-----------|---------|
 | **Fail-closed** | Sem token / JWT inválido / scope ausente → `401`/`403`, nunca “seguir como anônimo” |
-| **Least privilege** | Scopes IdP (`mcp:read`/`write`, `invoke`); Hub grants por perfil; service token **só** Hub↔BFF |
+| **Least privilege** | Scopes IdP (`mcp:read`/`write`, `invoke`); Hub grants por perfil; ops Hub com JWT SPA (sem service token no browser) |
 | **Segredos fora do git** | `.env`, Secrets Manager / Parameter Store; revisar diff antes de commit |
 | **Trust boundaries** | Browser ≠ sidecar; JWT do frontend (`aud` Loom) **não** autentica o Hub; Hub usa `aud`/`resource` próprio |
 | **Dados mínimos** | Não logar tokens, refresh, PATs, PII desnecessária |

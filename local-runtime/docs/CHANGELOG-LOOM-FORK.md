@@ -43,7 +43,7 @@ guias em [`guide/`](guide/). Pointers: Cursor
 | MCP catalog | **Core** alinhado upstream (sse / streamable_http) | Sem stdio/`MCP_RUNTIME_URL`; hosts na extension ([ADR 0014](adr/0014-mcp-host-isolated-http-registration.md)) |
 | Invoke local / Orientador / LiteLLM | **Core** (`local_invoke`, `local_agents`) + LiteLLM em `etc/` + agent-runtime na extension | `invocations.py` / `local_invoke.py` sensíveis |
 | Extension Host UI | **Core** fino (`frontend/src/extensions/*`, `App.tsx`, vite alias) | Manter host estável (ADR 0006) |
-| Hub MCP (OAuth, clients, agents-as-tools) | **Core** BFF fino (`/info` + ext proxy) + **Extension** sidecar `mcp-hub` + plugin | Data-plane no Hub (ADR 0015); telemetria Spec 028 em DB `mcp_hub` |
+| Hub MCP (OAuth, clients, agents-as-tools) | **Extension** sidecar `mcp-hub` + plugin (ops direto) | Core sem rotas Hub (ADR 0015); telemetria Spec 028 em DB `mcp_hub` |
 | Model Configuration (Agent Detail) | **Core** UI (`AgentDetailPage`, `DeploymentPanel`, `api/agents.ts`) | Merge Bedrock+LiteLLM no cliente — ver entrada 2026-09-14 |
 | Docs do fork | **Docs** em `local-runtime/docs/` (ADRs, specs, guias) | Baixo — sem `docs/` na raiz |
 
@@ -74,6 +74,17 @@ Checklist pós-merge:
 ---
 
 ## Registro
+
+### 2026-09-15 — Core sem Hub: plugin → Hub ops direto
+
+| | |
+|--|--|
+| **Zona** | **Core** + Extension + Config |
+| **Ok Dev** | Sim — “atacar tudo que possa deixar o core intocável” |
+| **Core removido** | `routers/mcp_hub.py`, `services/mcp_hub*.py`, `tests/test_mcp_hub.py`; includes em `main.py`; env Hub no backend overlay |
+| **Hub** | `/v1/*` com JWT SPA (`aud=loom-frontend`) + `mcp:read/write`; CORS; `GET /v1/info` |
+| **Plugin** | `hubFetch` → `VITE_MCP_HUB_URL` / `http://127.0.0.1:8790` |
+| **Nota** | Analytics FinOps join Core removido (só telemetria Hub) |
 
 ### 2026-09-15 — ADR 0015 fase 5: remover data-plane Hub do Core
 

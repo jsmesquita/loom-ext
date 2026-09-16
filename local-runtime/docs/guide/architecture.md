@@ -102,11 +102,11 @@ flowchart TB
   FE -->|REST + user JWT| BE
   BE --> PG
   BE -->|OIDC bootstrap / JWKS config| IDPL
-  BE -->|service token ops/plugin| HUB
   BE -->|source=external BYO invoke| AR
   BE -->|source=deploy/harness invoke_agent| AC
   BE --> LL
   HUB -->|user JWT dual-aud / exchange| BE
+  FE -->|ops JWT + CORS| HUB
   HUB --> HSTORE
   HUB -->|validate access_token| IDPL
   AR --> LL
@@ -151,7 +151,9 @@ local de desenvolvimento; em produção use DNS/TLS e secrets store.
 | UI | frontend origin | `http://localhost:5173` |
 | BFF | API base | `http://localhost:8000` |
 | MCP Hub resource | `MCP_HUB_PUBLIC_URL` | `http://127.0.0.1:8790/mcp` |
-| Hub → BFF | `MCP_HUB_INTERNAL_URL` + `MCP_HUB_SERVICE_TOKEN` | service network |
+| Hub → Loom APIs | user JWT dual-aud / exchange | service network |
+| Plugin → Hub ops | browser JWT (`aud=loom-frontend`) + CORS | `http://127.0.0.1:8790/v1/*` |
+| IDE → Hub MCP | OAuth `aud=loom-mcp-hub` | `http://127.0.0.1:8790/mcp` |
 | MCP hosts (extension) | URLs no catálogo Loom (`auth=none`) | `http://mcp-azure-devops:8787/mcp`, … |
 | agent-runtime (extensão) | `AGENT_RUNTIME_URL` + `AGENT_RUNTIME_TOKEN` | service network; **pool** de réplicas ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md), [spec 027](../specs/027-local-agent-worker-pool.md)) |
 | AgentCore / harness (produção) | credenciais AWS / ARNs no BFF | conta AWS |
@@ -198,15 +200,13 @@ Fluxo (ADR 0015): IDE OAuth → JWT → `tools/list` (catálogo Loom ∩ grants 
 flowchart TB
   subgraph be[Backend FastAPI]
     AUTH[auth / idp ACL]
-    MCPR[routers mcp* / hub info + ext proxy]
+    MCPR[routers mcp* / agents / auth]
     INV[invocations<br/>adapter: local / agentcore / harness]
-    HPROXY[mcp_hub_proxy<br/>ops → Hub]
     ORM[SQLAlchemy models]
   end
   AR[agent-runtime<br/>extensão local]
   AC[AgentCore / Harness AWS]
   MCPR --> AUTH
-  MCPR --> HPROXY
   INV --> ORM
   INV --> AUTH
   INV -->|source=external BYO| AR

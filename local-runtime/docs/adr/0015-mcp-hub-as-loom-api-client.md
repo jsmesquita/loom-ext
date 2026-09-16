@@ -61,12 +61,9 @@ o Core só vê `streamable_http` + URL.
    (`endpoint_url` do catálogo) diretamente — sem `POST /api/mcp/hub/tools/call`.
 5. **`agent__*`:** list via `GET /api/agents`; invoke via
    `POST /api/agents/{id}/invoke` (SSE); runs em cache local do Hub.
-6. **Remover do Core** (**feito**): data-plane
-   `materialize*` / `tools/call` / `agents/*` e serviços associados.
-   Restam: `GET /api/mcp/hub/info` + `/api/ext/local-runtime/*` (ops/plugin;
-   service token só Hub↔BFF admin).
-7. **Ops UI** (plugin): clients/grants/analytics via BFF ext → Hub
-   (`:8790`) com service token.
+6. **Remover do Core** (**feito**): data-plane *e* ops proxy —
+   sem `mcp_hub*` no FastAPI. Plugin fala com Hub `/v1/*` (JWT SPA + CORS).
+7. **Ops UI** (plugin): clients/grants/analytics → Hub `:8790` direto.
 
 ### Congelamento imediato (mesmo antes da implementação)
 
@@ -226,14 +223,12 @@ Fase 3 reduz dependência do BFF no hot path de tools MCP.
 
 ## Critérios de pronto (quando Aceito + implementado)
 
-- [x] Hub sobe e serve IDE **sem** rotas data-plane `/api/mcp/hub/materialize*` /
-      `tools/call` / `agents/*` no Core (service token só ops/plugin)
-- [x] Nenhuma rota data-plane `/api/mcp/hub/materialize*` / `tools/call` /
-      `agents/*` no Core
+- [x] Hub sobe e serve IDE **sem** `MCP_HUB_SERVICE_TOKEN` / rotas Hub no Core
+- [x] Nenhuma rota `/api/mcp/hub/*` nem `/api/ext/local-runtime/*` no Core
 - [x] Token H rejeitado pelo FastAPI nas APIs nativas; Hub usa Token L
-      (dual-aud / exchange) para catálogo e agents
-- [x] `make local.up` + Cursor → Hub: list/call MCP documentados (agents:
-      escopos nativos `/api/agents`)
+      (dual-aud / exchange) para catálogo e agents; ops usa JWT SPA
+      (`aud=loom-frontend`) em `/v1/*`
+- [x] `make local.up` + Cursor → Hub: list/call MCP documentados
 - [x] Changelog + architecture L3 Hub atualizados
 
 ## Referências
