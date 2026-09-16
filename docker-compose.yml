@@ -110,7 +110,7 @@ services:
       LOOM_LITELLM_PROXY_BASE_URL: http://localhost:4000
       LOOM_LITELLM_DISCOVERY_BASE_URL: http://litellm:4000
       LOOM_LITELLM_PROXY_API_KEY: ${LITELLM_MASTER_KEY:-sk-loom-local-dev}
-      # Local-runtime overlay injects AGENT_RUNTIME_* / MCP_HUB_* (not MCP host APIs).
+      # Local-runtime overlay injects AGENT_RUNTIME_* (not MCP host / Hub APIs).
       # Bind-mounted source lives on a filesystem whose change events do not reach the
       # container, so the reloader has to poll.
       WATCHFILES_FORCE_POLLING: "true"

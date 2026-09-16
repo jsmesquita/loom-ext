@@ -183,32 +183,6 @@ def _migrate_add_columns(eng) -> None:
                 with eng.begin() as conn:
                     conn.execute(DDL(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
 
-    # Drop fork-only stdio catalog columns (ADR 0014 — Loom HTTP-only).
-    drops = [
-        ("mcp_servers", "template_id"),
-        ("mcp_servers", "template_params"),
-        ("mcp_servers", "secret_refs"),
-        ("mcp_servers", "runtime_state"),
-    ]
-    for table, column in drops:
-        if not insp.has_table(table):
-            continue
-        existing = {c["name"] for c in insp.get_columns(table)}
-        if column not in existing:
-            continue
-        logger.info("Migrating: ALTER TABLE %s DROP COLUMN %s", table, column)
-        with eng.begin() as conn:
-            if is_postgres:
-                conn.execute(DDL(f'ALTER TABLE {table} DROP COLUMN IF EXISTS "{column}"'))
-            else:
-                conn.execute(DDL(f"ALTER TABLE {table} DROP COLUMN {column}"))
-
-    # Drop legacy Hub mint table (ADR 0011 — OAuth only).
-    if insp.has_table("mcp_hub_sessions"):
-        logger.info("Migrating: DROP TABLE mcp_hub_sessions")
-        with eng.begin() as conn:
-            conn.execute(DDL("DROP TABLE IF EXISTS mcp_hub_sessions"))
-
 
 def _backfill_session_users(eng) -> None:
     """Best-effort backfill of user_id on invocation_sessions.

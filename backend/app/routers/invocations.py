@@ -31,7 +31,7 @@ from app.models.approval_policy import ApprovalPolicy
 
 from app.services.agentcore import invoke_agent, invoke_agent_ws
 from app.services.harness import invoke_harness_stream
-from app.services.local_invoke import invoke_local_agent_stream, is_external_agent, is_local_agent
+from app.services.local_invoke import invoke_local_agent_stream, is_external_agent
 from app.services.cloudwatch import (
     get_log_events, get_usage_log_events,
     parse_agent_start_time, parse_agentcore_request_id,
@@ -1641,7 +1641,7 @@ async def invoke_agent_endpoint(
             if server.supports_elicitation == "true":
                 has_elicitation_connector = True
         logger.info("Resolved %d dynamic MCP connectors for invocation (elicitation=%s)", len(dynamic_mcp_servers), has_elicitation_connector)
-    elif is_local_agent(agent):
+    elif is_external_agent(agent):
         # Fallback: agent-linked MCPs when Chat Invoke did not pass connector_ids
         from app.services.local_agent_mcp import resolve_dynamic_mcp_servers
 
@@ -1704,7 +1704,7 @@ async def invoke_agent_endpoint(
         approval_policies_payload = [p.to_dict() for p in active_policies]
 
     # Dispatch to harness, local agent-runtime / LiteLLM, or AgentCore
-    if is_local_agent(agent):
+    if is_external_agent(agent):
         stream_gen = invoke_local_agent_stream(
             agent, session, invocation, db, client_invoke_time,
             request_body.prompt, runtime_model_id,

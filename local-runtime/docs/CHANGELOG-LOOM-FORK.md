@@ -75,6 +75,16 @@ Checklist pós-merge:
 
 ## Registro
 
+### 2026-09-15 — Limpeza residual pós–Core sem Hub
+
+| | |
+|--|--|
+| **Zona** | Core + Extension + Config + Docs |
+| **Ok Dev** | Sim — limpar residual |
+| **Removido** | `LoomGateway.service_token`; alias `is_local_agent`; DROPs one-shot stdio/`mcp_hub_sessions` em `db.py`; `MCP_RUNTIME_TOKEN`/`MCP_HUB_*` no backend overlay; `MCP_HUB_SERVICE_TOKEN` do `.env` |
+| **UI** | BYO só `source=external` (migração DB ainda aceita legacy `local` no backend) |
+| **Docs** | security, specs 019/028, ADR 0011 alinham ADR 0015 |
+
 ### 2026-09-15 — Core sem Hub: plugin → Hub ops direto
 
 | | |

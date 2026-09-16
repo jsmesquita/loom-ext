@@ -1,26 +1,13 @@
 ﻿"""Loom gateway: user JWT to native APIs + direct MCP upstream (ADR 0015)."""
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from mcp_hub.adapters.outbound import agents_native, catalog, mcp_upstream
 
 
-def service_token() -> str:
-    """Optional: still used for Hub admin routes called by the Loom BFF plugin."""
-    return os.environ.get("MCP_HUB_SERVICE_TOKEN", "").strip()
-
-
-def _token(kwargs: dict[str, Any]) -> str:
-    return str(kwargs.get("access_token") or "").strip()
-
-
 class LoomHttpGateway:
     """Outbound adapter implementing ``LoomGateway`` (ADR 0015)."""
-
-    def service_token(self) -> str:
-        return service_token()
 
     def materialize_allowlist(
         self,

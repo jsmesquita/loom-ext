@@ -60,7 +60,7 @@ class Invocation(Base):
     thinking_text = Column(Text, nullable=True)
     response_text = Column(Text, nullable=True)
 
-    # Hub attribution (Spec 028)
+    # Optional channel attribution (Spec 028)
     source = Column(String, nullable=True, index=True)
     mcp_client_slug = Column(String, nullable=True, index=True)
     hub_session_id = Column(String, nullable=True, index=True)

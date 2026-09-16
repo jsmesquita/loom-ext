@@ -1,8 +1,9 @@
 # Spec 023 — Grants do Hub por perfil IdP
 
-- **Status:** Rascunho
+- **Status:** Rascunho — **UI path atualizado 2026-09-15:** plugin → Hub `/v1/clients/…/profile-grants`
+  (sem BFF `/api/ext/local-runtime`; [ADR 0015](../adr/0015-mcp-hub-as-loom-api-client.md))
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-13 — endpoint `profile-grants` on-demand
+- **Atualizado:** 2026-09-15 — ops direto no Hub
 - **Implementa:** [ADR 0010](../adr/0010-mcp-hub-profile-grants.md)
 - **Depende de:** [018](018-mcp-hub-allowlist.md), [021](021-mcp-hub-clients.md), [017](017-mcp-hub-session.md)
 

@@ -39,8 +39,8 @@ Fluxo:
 | **Data** | 2026-09-15 |
 | **Área** | `mcp-hub` + reduzir Core `/api/mcp/hub` |
 | **Paths** | ADR [0015](../adr/0015-mcp-hub-as-loom-api-client.md); `services/mcp-hub`; `backend/app/routers/mcp_hub.py` |
-| **Status** | done — data-plane Hub + limpeza Core fase 5 |
-| **Notas** | Dual-aud interim; exchange RFC 8693 opcional via env; ops ainda usa service token Hub↔BFF |
+| **Status** | done — data-plane Hub + limpeza Core + ops plugin→Hub direto |
+| **Notas** | Dual-aud interim; exchange RFC 8693 opcional; sem service token Hub↔BFF |
 
 ### REF-2026-09-15-01 — Remover path stdio do Core Loom (após hosted HTTP)
 

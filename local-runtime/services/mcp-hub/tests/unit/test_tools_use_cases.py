@@ -75,9 +75,6 @@ class FakeLoom:
         self.call_status = 200
         self.call_result: dict[str, Any] = {"success": True, "result": {"ok": True}}
 
-    def service_token(self) -> str:
-        return "tok"
-
     def materialize_allowlist(self, **kwargs: Any) -> tuple[int, dict[str, Any]]:
         return self.allowlist_code, self.allowlist_payload
 

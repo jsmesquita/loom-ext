@@ -29,7 +29,7 @@ class TestHexagonalLayout(unittest.TestCase):
     def test_ports_are_protocols(self):
         store = FileHubStore()
         self.assertTrue(callable(store.list_clients))
-        self.assertTrue(callable(LoomHttpGateway().service_token))
+        self.assertTrue(callable(LoomHttpGateway().materialize_allowlist))
         self.assertTrue(callable(OAuthJwksValidator().validate_access_token))
         self.assertTrue(HubStore)
         self.assertTrue(LoomGateway)

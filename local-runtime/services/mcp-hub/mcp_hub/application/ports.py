@@ -65,8 +65,6 @@ class HubStore(Protocol):
 class LoomGateway(Protocol):
     """Gateway to Loom native APIs + MCP upstream (ADR 0015)."""
 
-    def service_token(self) -> str: ...
-
     def materialize_allowlist(
         self,
         *,

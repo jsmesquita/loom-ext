@@ -161,7 +161,7 @@ export function AgentDetailPage({
               {agent.source === "deploy" && (
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">CUSTOM</Badge>
               )}
-              {(agent.source === "external" || agent.source === "local") && (
+              {(agent.source === "external") && (
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">BYO</Badge>
               )}
               <RegistryStatusBadge status={agent.registry_status} showUnregistered={registryEnabled} registryEnabled={registryEnabled} />
@@ -217,12 +217,12 @@ export function AgentDetailPage({
                 />
               </div>
             )}
-            {(agent.source === "external" || agent.source === "local" || (!isDeployed && Boolean(agent.model_id))) && onPatchAgent && (
+            {(agent.source === "external" || (!isDeployed && Boolean(agent.model_id))) && onPatchAgent && (
               <div className="pt-2">
                 <RegisteredAgentModelConfig agent={agent} onPatchAgent={onPatchAgent} />
               </div>
             )}
-            {(agent.source === "external" || agent.source === "local") && onPatchAgent && (
+            {(agent.source === "external") && onPatchAgent && (
               <LocalAgentTagsSection
                 agent={agent}
                 onPatchAgent={onPatchAgent}
@@ -230,10 +230,10 @@ export function AgentDetailPage({
                 ownerRestriction={ownerRestriction}
               />
             )}
-            {(agent.source === "external" || agent.source === "local") && onRefreshAgents && (
+            {(agent.source === "external") && onRefreshAgents && (
               <LocalAgentBehaviorSection agent={agent} onRefreshAgents={onRefreshAgents} />
             )}
-            {(agent.source === "external" || agent.source === "local") && onRefreshAgents && (
+            {(agent.source === "external") && onRefreshAgents && (
               <LocalAgentIntegrationsSection agent={agent} onRefreshAgents={onRefreshAgents} />
             )}
           </CardContent>
