@@ -28,7 +28,7 @@ def _mcp_headers(server: dict[str, Any], identity: CallerIdentity) -> dict[str, 
         value = auth.get("api_key") or ""
         if value:
             headers[header_name] = value
-    elif auth_type in ("loom", "none") and mcp_runtime_token():
+    elif auth_type == "none" and mcp_runtime_token():
         headers["Authorization"] = f"Bearer {mcp_runtime_token()}"
     if identity.get("subject"):
         headers["X-Loom-Subject"] = identity["subject"]

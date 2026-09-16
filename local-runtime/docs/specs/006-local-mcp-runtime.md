@@ -1,9 +1,13 @@
 # Spec 006 — Local MCP Runtime
 
-- **Status:** Rascunho
+- **Status:** **Superseded** (2026-09-15) → [ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)
 - **Data:** 2026-09-12
-- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md)
-- **Depende de:** [005 — análise](005-existing-mcp-architecture.md), [007 — registro](007-local-mcp-registration.md)
+- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md) *(histórico)*
+
+> **Atual:** um container por MCP (`TEMPLATE=` → `POST /mcp`). Sem API
+> `/s/{id}` / register no BFF. Ver guia
+> [mcp-host-http-registration.md](../guide/mcp-host-http-registration.md).
+> Texto abaixo é o rascunho original.
 
 ## 1. Objetivo
 

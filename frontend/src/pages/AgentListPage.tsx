@@ -28,7 +28,7 @@ import { listTagPolicies, getRegistryConfig } from "@/api/settings";
 import { RegistryStatusBadge } from "@/components/RegistryStatusBadge";
 import type { AgentDeployRequest, AgentHarnessDeployRequest, AgentResponse, TagPolicy } from "@/api/types";
 
-type BuilderTab = "register" | "deploy" | "local";
+type BuilderTab = "register" | "deploy" | "byo";
 
 interface AgentListPageProps {
   agents: AgentResponse[];
@@ -228,7 +228,7 @@ export function AgentListPage({
           <Card>
             <CardContent className="pt-4 space-y-3">
               <div className="flex rounded-md border text-sm w-fit" role="tablist">
-                {(["deploy", "register", "local"] as const).map((tab, index, arr) => (
+                {(["deploy", "register", "byo"] as const).map((tab, index, arr) => (
                   <button
                     key={tab}
                     type="button"
@@ -243,12 +243,12 @@ export function AgentListPage({
                     }`}
                     onClick={() => setActiveTab(tab)}
                   >
-                    {tab === "deploy" ? "Deploy" : tab === "register" ? "Import" : "Local"}
+                    {tab === "deploy" ? "Deploy" : tab === "register" ? "Import" : "External"}
                   </button>
                 ))}
               </div>
 
-              {activeTab === "local" ? (
+              {activeTab === "byo" ? (
                 <LocalAgentCreateForm
                   onCreated={async () => {
                     await onLocalCreated?.();
@@ -461,7 +461,7 @@ export function AgentListPage({
                             : "\u2014"}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {agent.source === "harness" ? "MANAGED" : agent.source === "deploy" ? "CUSTOM" : agent.source === "local" ? "LOCAL" : agent.source ?? "\u2014"}
+                          {agent.source === "harness" ? "MANAGED" : agent.source === "deploy" ? "CUSTOM" : (agent.source === "external" || agent.source === "local") ? "BYO" : agent.source ?? "\u2014"}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {agent.network_mode ?? "\u2014"}

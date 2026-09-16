@@ -141,10 +141,6 @@ def _migrate_add_columns(eng) -> None:
         ("identity_providers", "managed_by", "VARCHAR"),
         ("mcp_servers", "supports_elicitation", "VARCHAR"),
         ("mcp_servers", "runtime_endpoint_url", "VARCHAR"),
-        ("mcp_servers", "template_id", "VARCHAR"),
-        ("mcp_servers", "template_params", "TEXT"),
-        ("mcp_servers", "secret_refs", "TEXT"),
-        ("mcp_servers", "runtime_state", "VARCHAR"),
         ("mcp_servers", "delegation_mode", "VARCHAR DEFAULT 'm2m'"),
         ("a2a_agents", "delegation_mode", "VARCHAR DEFAULT 'm2m'"),
         ("mcp_servers", "obo_grant_type", "VARCHAR"),
@@ -186,6 +182,32 @@ def _migrate_add_columns(eng) -> None:
                 logger.info("Migrating: ALTER TABLE %s ADD COLUMN %s %s", table, column, col_type)
                 with eng.begin() as conn:
                     conn.execute(DDL(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+
+    # Drop fork-only stdio catalog columns (ADR 0014 — Loom HTTP-only).
+    drops = [
+        ("mcp_servers", "template_id"),
+        ("mcp_servers", "template_params"),
+        ("mcp_servers", "secret_refs"),
+        ("mcp_servers", "runtime_state"),
+    ]
+    for table, column in drops:
+        if not insp.has_table(table):
+            continue
+        existing = {c["name"] for c in insp.get_columns(table)}
+        if column not in existing:
+            continue
+        logger.info("Migrating: ALTER TABLE %s DROP COLUMN %s", table, column)
+        with eng.begin() as conn:
+            if is_postgres:
+                conn.execute(DDL(f'ALTER TABLE {table} DROP COLUMN IF EXISTS "{column}"'))
+            else:
+                conn.execute(DDL(f"ALTER TABLE {table} DROP COLUMN {column}"))
+
+    # Drop legacy Hub mint table (ADR 0011 — OAuth only).
+    if insp.has_table("mcp_hub_sessions"):
+        logger.info("Migrating: DROP TABLE mcp_hub_sessions")
+        with eng.begin() as conn:
+            conn.execute(DDL("DROP TABLE IF EXISTS mcp_hub_sessions"))
 
 
 def _backfill_session_users(eng) -> None:
@@ -283,6 +305,27 @@ def _seed_demo_tag_profiles(eng) -> None:
         session.close()
 
 
+def _migrate_agent_source_local_to_external(eng) -> None:
+    """Rename agents.source 'local' → 'external' (BYO agents; Dev-approved rename)."""
+    insp = inspect(eng)
+    if "agents" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("agents")}
+    if "source" not in cols:
+        return
+    with eng.begin() as conn:
+        result = conn.execute(
+            text("UPDATE agents SET source = 'external' WHERE source = 'local'")
+        )
+        # rowcount is dialect-dependent; log best-effort
+        try:
+            n = result.rowcount
+        except Exception:
+            n = -1
+        if n and n > 0:
+            logger.info("Migrated %s agent row(s) source=local → external", n)
+
+
 def init_db() -> None:
     """
     Initialize the database by creating all tables.
@@ -294,6 +337,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _migrate_add_columns(engine)
+    _migrate_agent_source_local_to_external(engine)
     _backfill_session_users(engine)
     _seed_default_tags(engine)
     _seed_demo_tag_profiles(engine)

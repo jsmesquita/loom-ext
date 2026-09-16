@@ -1,4 +1,4 @@
-"""Persist/resolve MCP + A2A linked to source=local agents (Hub + Chat)."""
+"""Persist/resolve MCP + A2A linked to source=external (BYO) agents (Hub + Chat)."""
 from __future__ import annotations
 
 import json
@@ -74,14 +74,14 @@ def _snapshot_server(server: McpServer) -> dict[str, Any]:
         "endpoint_url": server.endpoint_url,
         "auth_type": server.auth_type,
     }
-    if server.transport_type == "stdio" or server.auth_type in ("loom", "none", ""):
-        entry["auth"] = {"type": "service_bearer"}
-    elif server.auth_type == "api_key":
+    if server.auth_type == "api_key":
         entry["auth"] = {
             "type": "api_key",
             "credentials_secret_arn": f"loom/mcp/{server.name}/api-key/{{actor_id}}",
             "api_key_header_name": server.api_key_header_name or "x-api-key",
         }
+    elif server.auth_type not in ("none", "", None):
+        entry["auth"] = {"type": server.auth_type}
     if getattr(server, "supports_elicitation", None) == "true":
         entry["supports_elicitation"] = "true"
     entry["delegation_mode"] = getattr(server, "delegation_mode", None) or "m2m"
@@ -148,10 +148,12 @@ def set_local_agent_integrations(
     a2a_agent_ids: list[int] | None = None,
 ) -> dict[str, list[int]]:
     """Replace MCP and/or A2A links on a local agent (config + access rules)."""
-    if agent.source != "local":
+    from app.services.local_invoke import is_external_agent
+
+    if not is_external_agent(agent):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="local integrations are only supported for source=local agents",
+            detail="local integrations are only supported for source=external (BYO) agents",
         )
     entry = _agent_config_entry(agent)
     if entry is None:
@@ -269,25 +271,19 @@ def resolve_dynamic_mcp_servers(
             continue
 
         endpoint_url = server.endpoint_url
-        if server.transport_type == "stdio":
-            from app.services.mcp_runtime_client import (
-                McpRuntimeError,
-                ensure_stdio_ready,
-                facade_url,
+        if server.transport_type not in ("sse", "streamable_http"):
+            logger.warning(
+                "Skipping MCP %s for agent %s: unsupported transport %s",
+                server.id,
+                agent.id,
+                server.transport_type,
             )
-            try:
-                ensure_stdio_ready(server)
-            except McpRuntimeError as exc:
-                logger.warning("stdio MCP %s not ready for hub/local invoke: %s", server.id, exc)
-                continue
-            endpoint_url = facade_url(int(server.id))
-            if server.endpoint_url != endpoint_url:
-                server.endpoint_url = endpoint_url
+            continue
 
         entry: dict[str, Any] = {
             "name": server.name,
             "enabled": True,
-            "transport": "streamable_http" if server.transport_type == "stdio" else server.transport_type,
+            "transport": server.transport_type,
             "endpoint_url": endpoint_url,
         }
         selected = allowed_tool_names(rule)
@@ -301,9 +297,7 @@ def resolve_dynamic_mcp_servers(
         elif hub_tools is not None:
             entry["allowed_tools"] = sorted(hub_tools)
 
-        if server.transport_type == "stdio" or server.auth_type in ("loom", "none", "", None):
-            entry["auth"] = {"type": "service_bearer"}
-        elif server.auth_type == "api_key":
+        if server.auth_type == "api_key":
             entry["auth"] = {
                 "type": "api_key",
                 "credentials_secret_arn": f"loom/mcp/{server.name}/api-key/{user.sub}",
@@ -346,10 +340,12 @@ def set_runtime_options(
     timeout_s: float | None = None,
     max_tool_rounds: int | None = None,
 ) -> dict[str, float | int]:
-    if agent.source != "local":
+    from app.services.local_invoke import is_external_agent
+
+    if not is_external_agent(agent):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="runtime options are only supported for source=local agents",
+            detail="runtime options are only supported for source=external (BYO) agents",
         )
     entry = _agent_config_entry(agent)
     if entry is None:

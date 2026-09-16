@@ -83,17 +83,19 @@ def _get_jwks_client() -> PyJWKClient:
     return _jwks_client
 
 
+def _claim_audiences(claims: dict[str, Any]) -> list[str]:
+    aud = claims.get("aud")
+    if isinstance(aud, str):
+        return [aud]
+    if isinstance(aud, list):
+        return [str(a) for a in aud]
+    return []
+
+
 def _audiences_ok(claims: dict[str, Any]) -> bool:
     expected_aud = oidc_audience()
     expected_resource = resource_url()
-    aud = claims.get("aud")
-    auds: list[str]
-    if isinstance(aud, str):
-        auds = [aud]
-    elif isinstance(aud, list):
-        auds = [str(a) for a in aud]
-    else:
-        auds = []
+    auds = _claim_audiences(claims)
     if expected_aud and expected_aud in auds:
         return True
     if expected_resource and expected_resource in auds:
@@ -111,6 +113,30 @@ def _audiences_ok(claims: dict[str, Any]) -> bool:
     return False
 
 
+def admin_audiences() -> list[str]:
+    """Audiences accepted for Hub ops admin (/v1/*) from the Loom SPA JWT."""
+    import os
+
+    raw = os.environ.get(
+        "MCP_HUB_ADMIN_AUDIENCES",
+        "loom-frontend,loom-mcp-hub",
+    )
+    out = [p.strip() for p in raw.split(",") if p.strip()]
+    resource = resource_url()
+    if resource and resource not in out:
+        out.append(resource)
+    return out
+
+
+def _admin_audiences_ok(claims: dict[str, Any]) -> bool:
+    allowed = set(admin_audiences())
+    auds = set(_claim_audiences(claims))
+    if auds & allowed:
+        return True
+    azp = str(claims.get("azp") or "")
+    return bool(azp and azp in allowed)
+
+
 def _extract_groups(claims: dict[str, Any]) -> list[str]:
     raw = claims.get("groups")
     if isinstance(raw, list):
@@ -123,11 +149,7 @@ def _extract_groups(claims: dict[str, Any]) -> list[str]:
     return []
 
 
-def validate_access_token(token: str) -> HubIdentity | None:
-    """Return identity dict {sub, groups, username} or None if invalid.
-
-    Rejects legacy mint tokens (`hs_…`) and JWTs that fail issuer/audience checks.
-    """
+def _decode_claims(token: str) -> dict[str, Any] | None:
     if not token:
         return None
     if token.startswith("hs_"):
@@ -140,7 +162,7 @@ def validate_access_token(token: str) -> HubIdentity | None:
     try:
         jwks = _get_jwks_client()
         signing_key = jwks.get_signing_key_from_jwt(token)
-        claims = jwt.decode(
+        return jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256", "ES256"],
@@ -154,9 +176,9 @@ def validate_access_token(token: str) -> HubIdentity | None:
     except Exception as exc:
         logger.info("jwt_validation_failed: %s", type(exc).__name__)
         return None
-    if not _audiences_ok(claims):
-        logger.info("jwt_audience_rejected aud=%s azp=%s", claims.get("aud"), claims.get("azp"))
-        return None
+
+
+def _identity_from_claims(claims: dict[str, Any], token: str) -> HubIdentity | None:
     sub = str(claims.get("sub") or "").strip()
     if not sub:
         return None
@@ -166,7 +188,34 @@ def validate_access_token(token: str) -> HubIdentity | None:
         "username": username,
         "groups": _extract_groups(claims),
         "connection_id": f"oauth:{sub}",
+        "access_token": token,
     }
+
+
+def validate_access_token(token: str) -> HubIdentity | None:
+    """Return identity for MCP resource (IDE) — aud must be Hub client/resource."""
+    claims = _decode_claims(token)
+    if claims is None:
+        return None
+    if not _audiences_ok(claims):
+        logger.info("jwt_audience_rejected aud=%s azp=%s", claims.get("aud"), claims.get("azp"))
+        return None
+    return _identity_from_claims(claims, token)
+
+
+def validate_admin_token(token: str) -> HubIdentity | None:
+    """Return identity for Hub ops (/v1/*) — accepts SPA aud (loom-frontend) too."""
+    claims = _decode_claims(token)
+    if claims is None:
+        return None
+    if not _admin_audiences_ok(claims):
+        logger.info(
+            "jwt_admin_audience_rejected aud=%s azp=%s",
+            claims.get("aud"),
+            claims.get("azp"),
+        )
+        return None
+    return _identity_from_claims(claims, token)
 
 
 def warm_jwks() -> bool:
@@ -187,6 +236,9 @@ class OAuthJwksValidator:
 
     def validate_access_token(self, token: str) -> HubIdentity | None:
         return validate_access_token(token)
+
+    def validate_admin_token(self, token: str) -> HubIdentity | None:
+        return validate_admin_token(token)
 
     def www_authenticate_value(self) -> str:
         return www_authenticate_value()

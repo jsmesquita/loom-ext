@@ -1,9 +1,8 @@
-"""Seed a local-only demo agent for the compose stack.
+"""Seed a BYO (source=external) demo agent for the compose stack.
 
-Agents with source='local' are not AgentCore runtimes. Invoke is handled by
-the backend talking to the LiteLLM proxy (see local_invoke). Idempotent: an
-existing row with the same ARN is left untouched so an operator edit survives
-backend restarts.
+These agents are not AgentCore runtimes. Invoke goes through agent-runtime /
+LiteLLM (see local_invoke). Idempotent: an existing row with the same ARN is
+left untouched so an operator edit survives backend restarts.
 """
 from __future__ import annotations
 
@@ -86,7 +85,7 @@ def _ensure_orientador_academico(session: Session) -> None:
         status="READY",
         region="local",
         account_id="local",
-        source="local",
+        source="external",
         deployment_status="deployed",
         protocol="HTTP",
         network_mode="PUBLIC",

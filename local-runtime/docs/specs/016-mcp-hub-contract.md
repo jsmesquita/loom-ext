@@ -2,7 +2,7 @@
 
 - **Status:** Rascunho
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-14 — Fase 2 agents como tools ([ADR 0012](../adr/0012-mcp-hub-agents-as-tools.md))
+- **Atualizado:** 2026-09-15 — transports só HTTP; mint já removido
 - **Implementa:** [ADR 0007](../adr/0007-mcp-hub.md), [ADR 0011](../adr/0011-mcp-hub-oauth-idp.md),
   [ADR 0012](../adr/0012-mcp-hub-agents-as-tools.md)
 - **Depende de:** [017](017-mcp-hub-session.md), [024](024-mcp-hub-oauth.md),
@@ -71,8 +71,8 @@ Mensagens de erro **não** incluem PAT, JWT nem body de secret.
 
 1. **Sem prefixo `loom_`.**
 2. Tools MCP: nome preferido = original no servidor; colisão →
-   `{server_slug}__{tool_name}` (`server_slug` = `template_id` ou slug de
-   `name`, lowercase `[a-z0-9-]+`).
+   `{server_slug}__{tool_name}` (`server_slug` = slug de `name`,
+   lowercase `[a-z0-9-]+`).
 3. Tools de agents: `agent__{slug}` ([025](025-mcp-hub-agents-as-tools.md));
    colisão → `agent__{slug}__{id}`.
 4. Sem colisão MCP, **não** namespacar servers.
@@ -83,7 +83,7 @@ Mensagens de erro **não** incluem PAT, JWT nem body de secret.
 
 - Fontes MCP: `McpServer` na allowlist de grants (018 §2b).
 - Fontes agent: materialize-agents se `agents_enabled` (018 §2c / 025).
-- Transports MCP: `stdio` (mcp-runtime), `sse`, `streamable_http`.
+- Transports MCP: `sse`, `streamable_http` (hosts locais = `mcp-*`).
 - Cache curto opcional para list upstream MCP; agents reavaliam RBAC a
   cada list (revogação rápida).
 

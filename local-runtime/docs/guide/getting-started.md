@@ -15,7 +15,7 @@ make local.up
 ```
 
 Sobe `docker-compose.yml` **mais** `local-runtime/compose/overlay.yml` (sidecars
-mcp-hub, mcp-runtime, agent-runtime, cursor-adapter, LiteLLM, …).
+mcp-hub, `mcp-*` TEMPLATE=, agent-runtime, cursor-adapter, LiteLLM, …).
 
 Primeira subida do Keycloak pode levar ~1 minuto (schema). Acompanhe:
 

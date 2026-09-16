@@ -32,7 +32,7 @@ class Agent(Base):
     log_group = Column(String, nullable=True)
     available_qualifiers = Column(Text, nullable=True)  # JSON array as text
     raw_metadata = Column(Text, nullable=True)  # Full JSON from AgentCore API
-    source = Column(String, nullable=True)  # 'register' or 'deploy'
+    source = Column(String, nullable=True)  # 'register' | 'deploy' | 'harness' | 'external' (BYO; legacy 'local')
     deployment_status = Column(String, nullable=True)  # 'deploying', 'deployed', 'failed', 'removing'
     execution_role_arn = Column(String, nullable=True)
     config_hash = Column(String, nullable=True)

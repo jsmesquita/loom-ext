@@ -30,9 +30,27 @@ Fluxo:
 
 ## Itens abertos
 
-_(nenhum aberto no momento)_
-
 ## Itens encerrados
+
+### REF-2026-09-15-02 — Hub como cliente Loom (ADR 0015)
+
+| Campo | Valor |
+|-------|--------|
+| **Data** | 2026-09-15 |
+| **Área** | `mcp-hub` + reduzir Core `/api/mcp/hub` |
+| **Paths** | ADR [0015](../adr/0015-mcp-hub-as-loom-api-client.md); `services/mcp-hub`; `backend/app/routers/mcp_hub.py` |
+| **Status** | done — data-plane Hub + limpeza Core fase 5 |
+| **Notas** | Dual-aud interim; exchange RFC 8693 opcional via env; ops ainda usa service token Hub↔BFF |
+
+### REF-2026-09-15-01 — Remover path stdio do Core Loom (após hosted HTTP)
+
+| Campo | Valor |
+|-------|--------|
+| **Data** | 2026-09-15 |
+| **Área** | Core `backend` MCP + UI |
+| **Paths** | catalog upstream; overlay `TEMPLATE=` only |
+| **Status** | done |
+| **Notas** | Loom HTTP-only; mint Hub drop; mcp-runtime sem hosted/`/s` |
 
 ### REF-2026-09-14-10 — Telemetria MCP Clients (uso, adesão, FinOps)
 

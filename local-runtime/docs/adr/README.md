@@ -9,7 +9,7 @@ Todos os ADRs do fork moram **aqui** (`local-runtime/docs/adr/`). Não criar em 
 - [0001 — Keycloak como IdP](0001-keycloak-as-identity-provider.md)
 - [0002 — PostgreSQL](0002-postgresql-as-relational-datastore.md)
 - [0003 — LiteLLM](0003-litellm-as-llm-gateway.md)
-- [0004 — Local MCP Runtime](0004-local-mcp-runtime.md)
+- [0004 — Local MCP Runtime](0004-local-mcp-runtime.md) — **superseded** → [0014](0014-mcp-host-isolated-http-registration.md)
 - [0005 — Local Agent Runtime](0005-local-agent-runtime.md)
 - [0006 — Extensão local-runtime](0006-local-runtime-extension-repo.md)
 - [0007 — MCP Hub](0007-mcp-hub.md)
@@ -19,6 +19,8 @@ Todos os ADRs do fork moram **aqui** (`local-runtime/docs/adr/`). Não criar em 
 - [0011 — Auth OAuth IdP (sem mint)](0011-mcp-hub-oauth-idp.md)
 - [0012 — Agents como tools MCP](0012-mcp-hub-agents-as-tools.md)
 - [0013 — Agents locais por template + pool de workers](0013-local-agent-templates-worker-pool.md)
+- [0014 — MCP host isolado — Loom só registra HTTP](0014-mcp-host-isolated-http-registration.md)
+- [0015 — MCP Hub como cliente das APIs Loom](0015-mcp-hub-as-loom-api-client.md) — **Aceito** (fase 5)
 
 ## Specs Hub (relacionadas)
 

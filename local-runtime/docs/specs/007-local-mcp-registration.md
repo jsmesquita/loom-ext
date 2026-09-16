@@ -1,8 +1,11 @@
 # Spec 007 — Registro de MCP local (templates)
 
-- **Status:** Rascunho
+- **Status:** **Superseded** (2026-09-15) → [ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)
 - **Data:** 2026-09-12
-- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md)
+- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md) *(histórico)*
+
+> **Atual:** registro só via formulário nativo Loom (`streamable_http` + URL
+> `http://mcp-*:8787/mcp`). Sem `transport=stdio` / `template_id` no Core.
 
 ## 1. Objetivo
 

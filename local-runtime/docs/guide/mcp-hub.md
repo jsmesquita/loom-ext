@@ -1,17 +1,18 @@
 # MCP Hub (uso rápido)
 
-Data plane: `local-runtime/services/mcp-hub` (porta **8790**).  
-Control plane / BFF: rotas sob o backend Loom (`/api/mcp/hub/…`, extension
-`/api/ext/local-runtime/mcp-clients/…`).
+Data plane + ops: `local-runtime/services/mcp-hub` (porta **8790**).  
+O Core Loom **não** expõe rotas Hub — o plugin fala com `/v1/*` no Hub
+(JWT SPA + CORS). Catálogo MCP genérico continua em `/api/mcp/servers` no BFF.
 
 ## Conceitos
 
 | Conceito | Onde | Notas |
 |----------|------|--------|
 | Canal (MCP client) | Store do Hub | Ex.: `cursor-vscode`; status enabled/disabled |
-| Grants por perfil IdP | UI Local runtime | Tools de **servers** MCP (Grafana, ADO, …) |
-| `agents_enabled` | Canal (não perfil) | Expõe `agent__*` + `agent_run_status` / `agent_run_result` |
-| OAuth | IdP ativo (Keycloak / Entra) | Sem mint; client estático `loom-mcp-hub` |
+| Grants por perfil IdP | UI Local runtime → Hub `/v1/clients/…` | Tools de **servers** MCP |
+| `agents_enabled` | Canal (não perfil) | Expõe `agent__*` + status/result |
+| OAuth IDE | IdP ativo | client estático `loom-mcp-hub` |
+| Ops auth | JWT SPA `aud=loom-frontend` | scopes `mcp:read` / `mcp:write` via grupos |
 
 ## Operar na UI
 
@@ -26,10 +27,6 @@ Ver [getting-started.md](getting-started.md#cursor--mcp-hub-resumo). Após mudar
 
 ## Agents locais (ex.: Orientador)
 
-- Seed: agent `source=local` no backend
-- Invoke via Hub usa BFF; mocks LiteLLM (`orientador-academico`, `mock-echo`)
-  não devem depender do agent-runtime
-- Fluxo async: `wait=accepted` → `agent_run_status` → `agent_run_result`
-
-Contrato: [ADR 0012](../adr/0012-mcp-hub-agents-as-tools.md) /
-[spec 025](../specs/025-mcp-hub-agents-as-tools.md).
+- Seed: agent `source=external` (BYO) no backend
+- Hub `agent__*` → `POST /api/agents/{id}/invoke` (JWT dual-aud)
+- Mocks LiteLLM (`orientador-academico`, `mock-echo`) para smoke sem Bedrock

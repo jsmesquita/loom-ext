@@ -2,9 +2,9 @@
 
 - **Status:** Implementado (contrato `2026-09-local-1`)
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-13 — path `local-runtime/services/agent-runtime`; BFF; ensure_stdio
+- **Atualizado:** 2026-09-15 — MCP só HTTP no catálogo ([ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)); sem ensure_stdio
 - **Implementa:** [ADR 0005](../adr/0005-local-agent-runtime.md)
-- **Depende de:** [ADR 0003](../adr/0003-litellm-as-llm-gateway.md), [ADR 0004](../adr/0004-local-mcp-runtime.md), [012 — segurança](012-local-agent-runtime-security.md)
+- **Depende de:** [ADR 0003](../adr/0003-litellm-as-llm-gateway.md), [ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md), [012 — segurança](012-local-agent-runtime-security.md)
 
 ## 1. Objetivo
 
@@ -33,7 +33,7 @@ Host bind: `127.0.0.1` no host / rede Docker. Código:
 `local-runtime/services/agent-runtime/` (overlay
 `local-runtime/compose/overlay.yml`).
 
-O FastAPI **não** chama LiteLLM no caminho `source=local` quando
+O FastAPI **não** chama LiteLLM no caminho `source=external` quando
 `AGENT_RUNTIME_URL` está setado. `invoke_local_agent_stream` é o BFF
 deste contrato (`backend/app/services/local_invoke.py`).
 
@@ -59,7 +59,7 @@ deste contrato (`backend/app/services/local_invoke.py`).
       "allowed_tools": ["string"] | null,
       "auth": {
         "type": "none | service_bearer | api_key | oauth2",
-        "...": "campos mínimos; stdio usa service_bearer + MCP_RUNTIME_TOKEN"
+        "...": "hosts locais: auth none → enrich service_bearer + MCP_RUNTIME_TOKEN"
       }
     }
   ],
@@ -80,20 +80,25 @@ Regras:
 
 1. `mcp_servers` já vem **filtrado** pelo backend (`McpServerAccess`).
    `allowed_tools: null` = todas as tools que o MCP listar; lista = allowlist.
-2. Stdio no catálogo chega aqui como `transport=streamable_http` +
-   `endpoint_url=http://mcp-runtime:8787/s/{id}/mcp` (ADR 0004).
-3. Antes do BFF, para cada connector stdio o backend chama
-   `ensure_stdio_ready` (evita `404 unknown_server` após recreate do
-   mcp-runtime). Enrichment injeta `service_bearer` + token de serviço
-   (`enrich_mcp_servers_for_runtime`); **nunca** o JWT do usuário.
-4. `approval_policies` pode ser `[]` em M1.
+2. Hosts locais no catálogo são `transport=streamable_http` +
+   `endpoint_url=http://mcp-<name>:8787/mcp` ([ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)).
+3. Enrichment injeta `service_bearer` + token de serviço
+   (`enrich_mcp_servers_for_runtime`) quando `auth.type=service_bearer`;
+   **nunca** o JWT do usuário. Sem `ensure_stdio_*` no BFF.
+4. `approval_policies`: lista de policies Loom (`loop_hook`). Antes de cada
+   `tools/call`, o runtime faz match por glob no nome MCP e no nome
+   `{server}__{tool}`. Em `require_approval`, emite SSE `approval_needed` e
+   bloqueia até `POST /v1/sessions/{id}/approval-decision`. O BFF traduz
+   para `approval_request` / `wait_for_approval` do Chat. `notify_only` não
+   pausa. `[]` = sem gate.
 5. `model_id=cursor-local`: o LiteLLM/CustomLLM + cursor-adapter operam
    em **planner mode** (spec 004 §9). O agent-runtime ainda é quem chama
    MCP; o Cursor só devolve `tool_calls` / `content`.
 
 ## 4. Response (SSE)
 
-Mesmos eventos do Chat: `session_start`, `chunk`, `session_end`, `error`.
+Mesmos eventos do Chat: `session_start`, `chunk`, `session_end`, `error`,
+mais `approval_needed` (interno BFF → vira `approval_request` no cliente).
 `token_source=local-agent-runtime`.
 
 ## 5. Tool loop (runtime)
@@ -103,8 +108,8 @@ Mesmos eventos do Chat: `session_start`, `chunk`, `session_end`, `error`.
 2. Nomes OpenAI: `{server}__{tool}` (sanitizados).
 3. `POST LiteLLM /v1/chat/completions` com `tools` (e, para cursor-local,
    marker `<<<loom_openai_tools>>>` nas messages — workaround CustomLLM).
-4. Se `tool_calls` → `tools/call` no MCP; anexar `role=tool`; repetir até
-   texto final ou `max_tool_rounds`.
+4. Se `tool_calls` → (opcional HITL) → `tools/call` no MCP; anexar `role=tool`;
+   repetir até texto final ou `max_tool_rounds`.
 5. Recuperação: se a resposta LiteLLM trouxer JSON `tool_calls` só em
    `content` (drop do campo estruturado), o runtime reconstrói a lista.
 
@@ -113,6 +118,6 @@ Mesmos eventos do Chat: `session_start`, `chunk`, `session_end`, `error`.
 - [x] `contract_version` obrigatório; versão desconhecida → 400
 - [x] Bearer vazio → fail-closed 401
 - [x] SSE proxy no backend com `AGENT_RUNTIME_URL`
-- [x] Stdio provisionado no invoke (`ensure_stdio_ready`)
+- [x] Hosts locais como `streamable_http` + enrich bearer (ADR 0014)
 - [x] `make local.agent-runtime.test`
 - [ ] Telemetria estruturada completa (spec 013) — parcial

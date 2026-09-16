@@ -7,7 +7,7 @@ Política de processo (onde colocar código, ok do Dev): [rules.md](rules.md).
 Visão estrutural: [architecture.md](architecture.md).  
 Segurança: [security.md](security.md).
 
-**Última revisão:** 2026-09-14
+**Última revisão:** 2026-09-15
 
 ---
 
@@ -18,7 +18,7 @@ Segurança: [security.md](security.md).
 | Frontend SPA | Sim (CDN/static) | Stateless |
 | Backend FastAPI | Sim (várias réplicas) | Sessão em Postgres; JWT stateless |
 | mcp-hub | Cuidado | Store JSON em volume **não** é multi-writer HA |
-| mcp-runtime / agent-runtime | Sim (réplicas) | Stateful short-lived por request; sem sticky obrigatório se não guardar memória local |
+| mcp-* / agent-runtime | Sim (réplicas) | `mcp-*`: 1 serviço por template; agent-runtime: short-lived por request |
 | LiteLLM / cursor-adapter | Sim / limitado | Adapter depende de workspace/API key |
 | Postgres / Keycloak | HA clássica | Primário+réplica / cluster IdP — fora do escopo local compose |
 
@@ -32,7 +32,7 @@ Ambiente **local** (`make local.up`) é single-node. Os padrões abaixo são o
 | Técnica | Uso neste projeto |
 |---------|-------------------|
 | **Stateless app tier** | BFF e sidecars sem estado em memória de processo que precise sticky session |
-| **Work fora do BFF** | Tool loops / stdio / agent loop nos sidecars (ADR 0006) — escala H/V por serviço |
+| **Work fora do BFF** | Tool loops / filhos MCP nos pods `mcp-*` / agent loop nos sidecars (ADR 0006) — escala H/V por serviço |
 | **Filas / async** | Hub agents: `wait=accepted` + poll status/result (não segurar HTTP longo no IDE) |
 | **Connection pooling** | SQLAlchemy `pool_pre_ping` / `pool_recycle` no backend |
 | **Cache com cuidado** | JWKS cache no Hub (TTL); invalidar com rotação de chaves IdP |
@@ -53,7 +53,7 @@ clients: evoluir para store compartilhado (Postgres/Redis) — registrar em
 | **Fail-closed** | Auth/JWKS indisponível → `401`/`403`, não degradar para anônimo ([security](security.md)) |
 | **Healthchecks** | Compose já usa `/health` nos sidecars — manter em serviços novos |
 | **Retry com jitter** | Só em erros **transitórios** (rede, 502/503); **nunca** retry cego em POST não idempotente |
-| **Circuit / bulkhead (leve)** | Isolar falha do LiteLLM da falha do mcp-runtime (não derrubar o BFF inteiro) |
+| **Circuit / bulkhead (leve)** | Isolar falha do LiteLLM da falha de um host `mcp-*` (não derrubar o BFF inteiro) |
 | **Graceful shutdown** | Sidecars: parar de aceitar work; deixar request em voo terminar ou marcar run `error` |
 | **Dependências opcionais** | Cursor-adapter down → erro claro no model `cursor-local`; mocks LiteLLM seguem |
 

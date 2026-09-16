@@ -6,7 +6,7 @@ extensão **local-runtime** (plugin UI + sidecars + docs do fork).
 | Camada | Onde | Papel |
 |--------|------|--------|
 | **Core Loom** | `backend/`, `frontend/` (host), `docker-compose.yml`, `makefile` | Plataforma, auth, catalog, BFF, Extension Host |
-| **Extension** | `local-runtime/` | Features locais: MCP Hub, mcp-runtime, agent-runtime, cursor-adapter, UI Local runtime |
+| **Extension** | `local-runtime/` | Features locais: MCP Hub, hosts `mcp-*`, agent-runtime, cursor-adapter, UI Local runtime |
 | **Docs do fork** | `local-runtime/docs/` | Regras, guias, changelog, ADRs novas — **não** em `docs/` na raiz |
 
 ## Mapa rápido
@@ -17,7 +17,7 @@ extensão **local-runtime** (plugin UI + sidecars + docs do fork).
 ├── frontend/                # SPA Loom + Extension Host
 ├── local-runtime/
 │   ├── plugin/              # UI @loom-ext/local-runtime
-│   ├── services/            # mcp-hub, mcp-runtime (+templates/), …
+│   ├── services/            # mcp-hub, mcp-runtime (imagem TEMPLATE=), …
 │   ├── compose/overlay.yml  # sidecars no `make local.up`
 │   └── docs/                # ← regras, guias, ADRs, specs, changelog
 ├── etc/docker/              # Keycloak, LiteLLM, postgres-init (stack local)

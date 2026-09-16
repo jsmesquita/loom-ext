@@ -2,16 +2,16 @@
 
 - **Status:** Implementado (baseline M1); telemetria/redactor avançados ainda parciais
 - **Data:** 2026-09-13
-- **Atualizado:** 2026-09-13 — BFF + service tokens; ensure_stdio; planner sem MCP no SDK
+- **Atualizado:** 2026-09-15 — sem ensure_stdio; hosts `mcp-*` HTTP
 - **Implementa:** [ADR 0005](../adr/0005-local-agent-runtime.md)
-- **Depende de:** [011 — contrato](011-local-agent-runtime-contract.md), [008 — segurança MCP](008-local-mcp-security.md)
+- **Depende de:** [011 — contrato](011-local-agent-runtime-contract.md), [ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)
 
 ## 1. Trust boundary
 
 ```text
 ┌─ zona Loom (authn/authz) ─────────────────────────────────┐
 │  IdP → UserInfo → FastAPI                                 │
-│    monta payload + McpServerAccess + ensure_stdio_ready   │
+│    monta payload + McpServerAccess                        │
 │    enrich service_bearer (nunca JWT do usuário no MCP)    │
 │    → agent-runtime (Bearer AGENT_RUNTIME_TOKEN)           │
 └───────────────────────────────────────────────────────────┘
@@ -23,16 +23,16 @@
 └───────────────────────────────────────────────────────────┘
               │
               ├─► LiteLLM (master/virtual key do proxy)
-              └─► mcp-runtime / MCP remoto (service token / api_key)
+              └─► mcp-* / MCP remoto (service token / api_key)
                         │
                         ▼
-                 ┌─ zona filho MCP (ADR 0004) ─┐
-                 │ PAT só no env do filho      │
-                 └─────────────────────────────┘
+                 ┌─ zona filho MCP (dentro do pod) ─┐
+                 │ PAT só no env do filho           │
+                 └──────────────────────────────────┘
 ```
 
 O agent-runtime **não** valida o IdP. Authz User → Agent → MCP → Tool
-permanece no control plane (e no mcp-runtime para stdio).
+permanece no control plane.
 
 ## 2. Autenticação de serviço
 
@@ -49,10 +49,10 @@ permanece no control plane (e no mcp-runtime para stdio).
 | --- | --- |
 | agent-runtime HTTP | `127.0.0.1` no host + rede Docker interna |
 | LiteLLM | já existente |
-| mcp-runtime | já `127.0.0.1:8787` |
+| mcp-* hosts | rede Docker; portas host opcionais loopback |
 
 Proibido: publicar `0.0.0.0` sem autenticação. Anônimo da internet não
-alcança o loop do agente nem o stdio.
+alcança o loop do agente nem o filho MCP no pod.
 
 ## 4. Isolamento de sessão
 
@@ -75,7 +75,7 @@ não derruba o listener HTTP do agent-runtime nem o FastAPI.
 | JWT do usuário | só no backend | nada |
 | `AGENT_RUNTIME_TOKEN` | env do backend + agent-runtime | valor |
 | `MCP_RUNTIME_TOKEN` | env; no payload como bearer da fachada | valor no header outbound |
-| `AZURE_DEVOPS_PAT` | env do **mcp-runtime** | **nada** |
+| `AZURE_DEVOPS_PAT` | env do **mcp-azure-devops** | **nada** |
 | LiteLLM master/virtual key | env do agent-runtime ou injetada pelo backend no invoke | só a chave do proxy |
 
 Nunca logar tokens, PAT, Authorization headers ou corpos de tool que
@@ -87,8 +87,8 @@ Mesmo com payload já filtrado:
 
 1. Ao chamar `tools/call`, se `allowed_tools` for lista, rejeitar nome
    fora dela (`mcp_denied`) **sem** chamar o MCP.
-2. Encaminhar `X-Loom-Allowed-Tools` / headers de identity que o
-   mcp-runtime já entende (ADR 0004 / spec 008).
+2. Encaminhar `X-Loom-Allowed-Tools` / headers de identity que o host
+   `mcp-*` entende ([ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)).
 3. Não seguir redirects arbitrários para hosts fora da allowlist de
    endpoints do payload (v1: só URLs presentes em `mcp_servers`).
 
@@ -111,6 +111,6 @@ serviço.
 
 - Request sem Bearer → 401
 - Token errado → 401
-- Tool não allowlisted → não chega ao mcp-runtime
+- Tool não allowlisted → não chega ao host `mcp-*`
 - PAT ausente dos logs do agent-runtime e do SSE
 - Derrubar o worker de uma sessão não mata o container do backend Loom

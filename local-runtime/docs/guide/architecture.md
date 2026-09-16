@@ -29,7 +29,7 @@ Relacionados: [ADR 0005](../adr/0005-local-agent-runtime.md),
 [overview](overview.md), [scalability-reliability.md](scalability-reliability.md),
 [CHANGELOG-LOOM-FORK.md](../CHANGELOG-LOOM-FORK.md).
 
-**Última revisão:** 2026-09-14 (ADR 0013 templates + worker pool; templates MCP; LiteLLM ≠ Bedrock)
+**Última revisão:** 2026-09-15 (ADR 0014: Loom HTTP-only; mcp-* `TEMPLATE=/mcp`; mint Hub removido; BYO `source=external`)
 
 ---
 
@@ -84,7 +84,7 @@ flowchart TB
     PG[(PostgreSQL<br/>estado Loom)]
     HUB[mcp-hub<br/>MCP resource server]
     HSTORE[(Hub store<br/>clients / grants)]
-    MCPR[mcp-runtime<br/>stdio supervisor]
+    MCPR[mcp-* services<br/>TEMPLATE=/mcp]
     AR[agent-runtime<br/>loop local — extensão]
     CA[cursor-adapter]
     LL[LiteLLM proxy]
@@ -94,7 +94,7 @@ flowchart TB
   AC[AgentCore / Harness AWS<br/>data plane produção]
   BR[Amazon Bedrock]
   PROV[OpenAI / Anthropic / …]
-  MCPX[MCP externos]
+  MCPX[Processos MCP filhos<br/>npx/uvx dentro dos pods]
   CURSOR[Cursor Agent SDK]
 
   USER --> FE
@@ -102,16 +102,16 @@ flowchart TB
   FE -->|REST + user JWT| BE
   BE --> PG
   BE -->|OIDC bootstrap / JWKS config| IDPL
-  BE -->|service token| HUB
-  BE -->|service token| MCPR
-  BE -->|source=local invoke| AR
+  BE -->|source=external BYO invoke| AR
   BE -->|source=deploy/harness invoke_agent| AC
   BE --> LL
-  HUB -->|materialize / tools / agents| BE
+  HUB -->|user JWT dual-aud / exchange| BE
+  FE -->|ops JWT + CORS| HUB
   HUB --> HSTORE
   HUB -->|validate access_token| IDPL
   AR --> LL
-  AR --> MCPR
+  AR -->|catálogo streamable_http| MCPR
+  HUB -->|tools/call direto| MCPR
   AC --> BR
   LL --> PROV
   LL -->|cursor-local| CA
@@ -125,6 +125,22 @@ Invoke no BFF escolhe o **adapter** (`local` | `agentcore` | `harness`) — ver
 ([spec 003](../specs/003-litellm-as-sole-llm-gateway.md)). AgentCore usa
 **Bedrock** no data plane AWS — sem seta LiteLLM ↔ AgentCore neste desenho.
 
+### MCP local (ADR 0014)
+
+```text
+overlay: mcp-azure-devops / mcp-rancher / mcp-grafana
+         (mesma imagem, TEMPLATE= distinto) → POST /mcp
+                    │
+                    ▼
+Loom UI form: streamable_http + URL http://mcp-*:8787/mcp
+                    │
+                    ▼
+agent-runtime / Hub tools (upstream HTTP) — `auth=none` (lateral trust nos pods)
+```
+
+O BFF **não** provisiona processos MCP (`MCP_RUNTIME_URL` removido). Stdio
+fica **só** dentro do container `mcp-*`.
+
 ### Endpoints (configuráveis)
 
 Contrato = **nome do serviço + env**. Valores abaixo são só referência do compose
@@ -135,8 +151,10 @@ local de desenvolvimento; em produção use DNS/TLS e secrets store.
 | UI | frontend origin | `http://localhost:5173` |
 | BFF | API base | `http://localhost:8000` |
 | MCP Hub resource | `MCP_HUB_PUBLIC_URL` | `http://127.0.0.1:8790/mcp` |
-| Hub → BFF | `MCP_HUB_INTERNAL_URL` + `MCP_HUB_SERVICE_TOKEN` | service network |
-| mcp-runtime | `MCP_RUNTIME_URL` + `MCP_RUNTIME_TOKEN` | service network |
+| Hub → Loom APIs | user JWT dual-aud / exchange | service network |
+| Plugin → Hub ops | browser JWT (`aud=loom-frontend`) + CORS | `http://127.0.0.1:8790/v1/*` |
+| IDE → Hub MCP | OAuth `aud=loom-mcp-hub` | `http://127.0.0.1:8790/mcp` |
+| MCP hosts (extension) | URLs no catálogo Loom (`auth=none`) | `http://mcp-azure-devops:8787/mcp`, … |
 | agent-runtime (extensão) | `AGENT_RUNTIME_URL` + `AGENT_RUNTIME_TOKEN` | service network; **pool** de réplicas ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md), [spec 027](../specs/027-local-agent-worker-pool.md)) |
 | AgentCore / harness (produção) | credenciais AWS / ARNs no BFF | conta AWS |
 | LiteLLM | discovery / proxy URL | compose service |
@@ -157,21 +175,24 @@ flowchart LR
     HTTP[http_app<br/>MCP JSON-RPC + management]
     OAUTH[oauth<br/>JWT / JWKS]
     STORE[store<br/>Hub persistence]
-    LOOMC[loom_client<br/>BFF HTTP]
+    LOOMC[loom_client<br/>APIs nativas + upstream]
     ACC[access / naming]
   end
   BE[Loom Backend]
   IDP[IdP JWKS]
+  MCPU[MCP upstream HTTP]
 
   HTTP --> OAUTH
   HTTP --> STORE
   HTTP --> ACC
   HTTP --> LOOMC
   OAUTH --> IDP
-  LOOMC -->|service token| BE
+  LOOMC -->|user JWT| BE
+  LOOMC -->|tools/call| MCPU
 ```
 
-Fluxo: IDE OAuth → JWT → `tools/list` (grants + `agent__*` se habilitado) → `tools/call` → BFF.
+Fluxo (ADR 0015): IDE OAuth → JWT → `tools/list` (catálogo Loom ∩ grants +
+`agent__*`) → `tools/call` direto ao upstream MCP (agents via `/api/agents`).
 
 ### L3b — Backend BFF (fork-relevant)
 
@@ -179,19 +200,16 @@ Fluxo: IDE OAuth → JWT → `tools/list` (grants + `agent__*` se habilitado) �
 flowchart TB
   subgraph be[Backend FastAPI]
     AUTH[auth / idp ACL]
-    MCPR[routers mcp* / hub proxy]
+    MCPR[routers mcp* / agents / auth]
     INV[invocations<br/>adapter: local / agentcore / harness]
-    HSVC[mcp_hub* services]
     ORM[SQLAlchemy models]
   end
   AR[agent-runtime<br/>extensão local]
   AC[AgentCore / Harness AWS]
   MCPR --> AUTH
-  MCPR --> HSVC
-  HSVC --> ORM
   INV --> ORM
   INV --> AUTH
-  INV -->|source=local| AR
+  INV -->|source=external BYO| AR
   INV -->|source=deploy/harness| AC
 ```
 
@@ -299,13 +317,12 @@ Objetos/colunas que **não** devem ser tratados como “só local-runtime”: vi
 | Objeto | Tipo | Notas |
 |--------|------|--------|
 | `identity_providers` | **Tabela nova (fork)** | ACL multi-IdP (Keycloak/Entra/…) |
-| `mcp_hub_sessions` | **Tabela nova (fork)** | Legado mint Hub (`hs_…`); fluxo atual = JWT IdP |
-| `mcp_servers.template_id` | **Coluna (fork)** | Templates stdio (`azure-devops`, grafana, …) |
-| `mcp_servers.runtime_endpoint_url` | **Coluna (fork)** | URL facade mcp-runtime |
-| `mcp_servers.runtime_state` | **Coluna (fork)** | Estado do runtime local |
-| `mcp_servers.template_params` / `secret_refs` | **Colunas (fork)** | Params + refs de segredo |
 | `mcp_servers.delegation_mode` / OBO fields | **Colunas (fork)** | Delegação m2m/obo |
-| Seeds Orientador (`agents` source=local) | **Dados (fork)** | Linhas/config; tabela `agents` continua Core |
+| Seeds Orientador (`agents` source=external / BYO) | **Dados (fork)** | Linhas/config; tabela `agents` continua Core |
+
+> Catálogo MCP Loom = só `sse` / `streamable_http` (upstream). Sem colunas
+> stdio; sem tabela mint. Hosts locais = serviços Compose `mcp-*`
+> ([guia](mcp-host-http-registration.md)).
 
 ```mermaid
 erDiagram
@@ -317,16 +334,9 @@ erDiagram
         string jwks_uri
         text group_mappings
     }
-    mcp_hub_sessions {
-        string id PK
-        string token_hash
-        string subject
-        datetime expires_at
-        datetime revoked_at
-    }
 ```
 
-`mcp_hub_sessions`: mint removido (ADR 0011). Tabela pode permanecer até limpeza **autorizada** pelo Dev.
+Auth do Hub IDE = OAuth IdP (ADR 0011). Sem tabela mint no Postgres Loom.
 
 ---
 
@@ -337,7 +347,7 @@ erDiagram
 | `hub_clients` / `hub_session_bindings` / **`hub_telemetry_events`** | **local-runtime** Hub PG | Canais MCP, grants, session bindings, tráfego list/call (Spec 028) |
 | **JSON fallback** | `MCP_HUB_STORE_PATH` (só se DSN unset; ou fonte de migrate) | Snapshot legado |
 | **Keycloak DB** | Container Keycloak | Realm `loom`, users/groups, client `loom-mcp-hub` |
-| **Templates YAML** | `local-runtime/services/mcp-runtime/templates/` (ro no container) | Allowlist stdio — dono: **mcp-runtime** |
+| **Templates YAML (MCP host)** | `local-runtime/services/mcp-runtime/templates/` | Allowlist do processo filho — dono: **mcp-runtime** (`TEMPLATE=`) |
 
 #### Hub store schema (Postgres `mcp_hub`)
 
@@ -364,22 +374,22 @@ Não misturar com schema/ORM do Loom Core.
 | Runs `agent__*` / Chat invoke | BFF cria **Core** `invocation_sessions` / `invocations` | Adapter **local** → agent-runtime; **deploy/harness** → AgentCore (produção) |
 | Modelo LLM | LiteLLM (único gateway do control plane) | OpenAI / Anthropic / …; `cursor-local` → cursor-adapter. Bedrock → AgentCore |
 | IdP ativo | **Fork (PG)** `identity_providers` | Keycloak/Entra (**local-runtime** / SaaS) |
-| Template stdio | **Fork** colunas em `mcp_servers` | **mcp-runtime** YAML allowlist |
-| Template agent local | **Extension** YAML (`agent-runtime/templates/`, [spec 026](../specs/026-local-agent-templates.md)); loader `yaml_agent_templates` | `agents.source=local` + escopo materializado no invoke ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md)) |
+| MCP local HTTP | **Core** `mcp_servers` (URL `http://mcp-*:8787/mcp`) | **Extension** pods `TEMPLATE=` ([ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)) |
+| Template agent BYO | **Extension** YAML (`agent-runtime/templates/`, [spec 026](../specs/026-local-agent-templates.md)); loader `yaml_agent_templates` | `agents.source=external` + escopo materializado no invoke ([ADR 0013](../adr/0013-local-agent-templates-worker-pool.md)) |
 
 ```text
-                    ┌──────────────────────────┐
-                    │  local-runtime           │
-                    │  Postgres DB mcp_hub     │
-                    │  mcp-runtime/templates/*.yaml │
-                    │  Keycloak (realm)        │
-                    └────────────┬─────────────┘
-                                 │ server_id / OAuth
-                    ┌────────────▼─────────────┐
-                    │  Postgres Loom           │
-                    │  Core tables             │
-                    │  + Fork tables/columns   │
-                    └──────────────────────────┘
+                    ┌──────────────────────────────┐
+                    │  local-runtime               │
+                    │  mcp-* (TEMPLATE=/mcp)       │
+                    │  Postgres DB mcp_hub         │
+                    │  agent-runtime / Keycloak    │
+                    └────────────┬─────────────────┘
+                                 │ streamable_http + OAuth
+                    ┌────────────▼─────────────────┐
+                    │  Postgres Loom + BFF         │
+                    │  mcp_servers (HTTP only)     │
+                    │  + Fork tables/columns       │
+                    └──────────────────────────────┘
 ```
 
 ---

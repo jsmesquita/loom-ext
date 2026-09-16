@@ -15,6 +15,7 @@ Não criar documentação nova em `docs/` na raiz do Loom.
 | [guide/python-best-practices.md](guide/python-best-practices.md) | SOLID, Clean Code, GoF, hexagonal (alvo) |
 | [guide/security.md](guide/security.md) | OWASP/RFC filtrados — API, OAuth, PII, injection |
 | [guide/mcp-hub.md](guide/mcp-hub.md) | Operar Hub / agents as tools |
+| [guide/mcp-host-http-registration.md](guide/mcp-host-http-registration.md) | MCP host isolado → registro HTTP no Loom |
 | [guide/upstream-sync.md](guide/upstream-sync.md) | Puxar o Loom público com o changelog |
 | [guide/rules.md](guide/rules.md) | **Regras canônicas** — Core vs extension |
 
@@ -26,7 +27,7 @@ Não criar documentação nova em `docs/` na raiz do Loom.
 | [backlog/refactoring.md](backlog/refactoring.md) | Oportunidades de refactor (aguardar Dev) |
 | [backlog/mcp-hub-telemetry-analytics-plan.md](backlog/mcp-hub-telemetry-analytics-plan.md) | Plano: telemetria MCP Clients (uso, adesão, FinOps) |
 | [backlog/local-runtime-guideline-refactor-plan.md](backlog/local-runtime-guideline-refactor-plan.md) | Plano fasado: aderência hexagonal / guidelines |
-| [adr/README.md](adr/README.md) | ADRs 0001–0013 |
+| [adr/README.md](adr/README.md) | ADRs 0001–0015 |
 | [specs/README.md](specs/README.md) | Specs 001–028 |
 
 ## Agentes de IDE (só pointers)

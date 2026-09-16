@@ -67,7 +67,7 @@ Só então implemente o escopo que ele autorizar.
 | UI (telas, nav, ops) | `local-runtime/plugin/` via Extension Host (`register` → `host.addExtension`) |
 | Sidecars, supervisors, MCP Hub data plane, adapters | `local-runtime/services/` + `local-runtime/compose/overlay.yml` |
 | **Docs** (ADRs, specs, changelogs, estas regras) | `local-runtime/docs/` **somente** — nunca arquivos novos em `docs/` na raiz |
-| Templates MCP (stdio allowlist) | `local-runtime/services/mcp-runtime/templates/` |
+| Templates MCP (allowlist YAML do host) | `local-runtime/services/mcp-runtime/templates/` |
 | Config local de stack | `etc/docker/` quando for stack local |
 
 ---

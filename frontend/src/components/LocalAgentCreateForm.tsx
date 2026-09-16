@@ -165,7 +165,7 @@ export function LocalAgentCreateForm({
         timeout_s: timeoutVal,
         max_tool_rounds: roundsVal,
       });
-      toast.success("Local agent created");
+      toast.success("BYO agent created");
       setName("");
       setDescription("");
       setMcpServerIds([]);
@@ -181,7 +181,8 @@ export function LocalAgentCreateForm({
   return (
     <div className="space-y-3 text-sm">
       <p className="text-xs text-muted-foreground">
-        Create a <span className="font-medium">source=local</span> agent from an allowlisted
+        Create a <span className="font-medium">BYO agent</span>{" "}
+        (<span className="font-mono text-[10px]">source=external</span>) from an allowlisted
         template. Workers stay generic; the objective is stored on the agent config.
       </p>
       <div className="space-y-1">
@@ -342,7 +343,7 @@ export function LocalAgentCreateForm({
         onClick={() => void handleSubmit()}
         disabled={submitting || isLoading || !templates.length || !modelId}
       >
-        Create local agent
+        Create BYO agent
       </Button>
     </div>
   );

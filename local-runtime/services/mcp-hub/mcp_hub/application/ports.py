@@ -63,7 +63,7 @@ class HubStore(Protocol):
 
 
 class LoomGateway(Protocol):
-    """HTTP gateway to the Loom BFF (service token)."""
+    """Gateway to Loom native APIs + MCP upstream (ADR 0015)."""
 
     def service_token(self) -> str: ...
 
@@ -76,6 +76,7 @@ class LoomGateway(Protocol):
         mcp_client_slug: str,
         client_status: str,
         grants: list[GrantRecord],
+        access_token: str = "",
     ) -> tuple[int, dict[str, Any]]: ...
 
     def tools_call(
@@ -87,10 +88,12 @@ class LoomGateway(Protocol):
         arguments: dict[str, Any],
         server_id: int,
         original_tool_name: str,
+        endpoint_url: str = "",
+        access_token: str = "",
     ) -> tuple[int, dict[str, Any]]: ...
 
     def materialize_agents(
-        self, *, subject: str, groups: list[str]
+        self, *, subject: str, groups: list[str], access_token: str = ""
     ) -> tuple[int, dict[str, Any]]: ...
 
     def agents_invoke(
@@ -108,10 +111,11 @@ class LoomGateway(Protocol):
         mcp_client_slug: str | None = None,
         hub_session_id: str | None = None,
         wait_mode: str | None = None,
+        access_token: str = "",
     ) -> tuple[int, dict[str, Any]]: ...
 
     def agents_run(
-        self, *, subject: str, groups: list[str], session_id: str
+        self, *, subject: str, groups: list[str], session_id: str, access_token: str = ""
     ) -> tuple[int, dict[str, Any]]: ...
 
 
@@ -119,6 +123,8 @@ class TokenValidator(Protocol):
     """Validate IDE OAuth access tokens for the Hub resource."""
 
     def validate_access_token(self, token: str) -> HubIdentity | None: ...
+
+    def validate_admin_token(self, token: str) -> HubIdentity | None: ...
 
     def www_authenticate_value(self) -> str: ...
 

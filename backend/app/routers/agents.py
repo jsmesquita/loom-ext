@@ -24,7 +24,6 @@ from app.models.config_entry import ConfigEntry
 from app.models.a2a import A2aAgent as A2aAgentModel, A2aAgentAccess
 from app.models.memory import Memory
 from app.models.mcp import McpServer, McpServerAccess
-from app.services.mcp_access import reject_stdio_for_agentcore
 from app.models.session import InvocationSession
 from app.models.invocation import Invocation
 from app.models.tag_policy import TagPolicy
@@ -913,8 +912,6 @@ def _deploy_agent(request: AgentCreateRequest, db: Session, background_tasks: Ba
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"MCP server IDs not found: {sorted(missing)}"
             )
-        reject_stdio_for_agentcore(mcp_records)
-
         # If registry is configured, only allow APPROVED MCP servers
         from app.services.registry import get_registry_client
         reg_client = get_registry_client()
@@ -2012,7 +2009,6 @@ def _deploy_harness(request: AgentCreateRequest, db: Session, background_tasks: 
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"MCP server IDs not found: {sorted(missing)}"
             )
-        reject_stdio_for_agentcore(mcp_records)
         for server in mcp_records:
             mcp_snapshots.append({
                 "name": server.name,
@@ -3606,7 +3602,6 @@ def redeploy_deploy_agent(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"MCP server IDs not found: {sorted(missing)}",
             )
-        reject_stdio_for_agentcore(mcp_records)
 
     mcp_snapshots = [
         {
@@ -3841,7 +3836,6 @@ def redeploy_harness_agent(
     mcp_snapshots: list[dict[str, Any]] = []
     if request.mcp_servers:
         mcp_records = db.query(McpServer).filter(McpServer.id.in_(request.mcp_servers)).all()
-        reject_stdio_for_agentcore(mcp_records)
         for server in mcp_records:
             mcp_snapshots.append({
                 "name": server.name,
@@ -4110,7 +4104,7 @@ def patch_agent(
         valid_ids = {m["model_id"] for m in get_merged_models(DEFAULT_REGION)}
         # Local agents may use LiteLLM ids that are briefly absent from discovery
         # (or template allowlist ids); still persist them on AGENT_CONFIG_JSON.
-        if request.model_id not in valid_ids and agent.source != "local":
+        if request.model_id not in valid_ids and agent.source not in ("external", "local"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid model ID: {request.model_id}",
@@ -4127,7 +4121,7 @@ def patch_agent(
     if "allowed_model_ids" in request.model_fields_set and request.allowed_model_ids is not None:
         valid_ids = {m["model_id"] for m in get_merged_models(DEFAULT_REGION)}
         invalid = [m for m in request.allowed_model_ids if m not in valid_ids]
-        if invalid and agent.source != "local":
+        if invalid and agent.source not in ("external", "local"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid model IDs: {invalid}",

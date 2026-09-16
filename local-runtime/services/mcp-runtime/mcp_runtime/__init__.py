@@ -1,1 +1,1 @@
-"""Local MCP Runtime — supervisor and HTTP facade for stdio MCP servers."""
+"""Local MCP Runtime — TEMPLATE= host exposing one MCP at POST /mcp."""

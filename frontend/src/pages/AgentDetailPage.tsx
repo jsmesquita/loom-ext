@@ -161,8 +161,8 @@ export function AgentDetailPage({
               {agent.source === "deploy" && (
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">CUSTOM</Badge>
               )}
-              {agent.source === "local" && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">LOCAL</Badge>
+              {(agent.source === "external" || agent.source === "local") && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">BYO</Badge>
               )}
               <RegistryStatusBadge status={agent.registry_status} showUnregistered={registryEnabled} registryEnabled={registryEnabled} />
               {!registryReadOnly && registryEnabled && (
@@ -217,12 +217,12 @@ export function AgentDetailPage({
                 />
               </div>
             )}
-            {(agent.source === "local" || (!isDeployed && Boolean(agent.model_id))) && onPatchAgent && (
+            {(agent.source === "external" || agent.source === "local" || (!isDeployed && Boolean(agent.model_id))) && onPatchAgent && (
               <div className="pt-2">
                 <RegisteredAgentModelConfig agent={agent} onPatchAgent={onPatchAgent} />
               </div>
             )}
-            {agent.source === "local" && onPatchAgent && (
+            {(agent.source === "external" || agent.source === "local") && onPatchAgent && (
               <LocalAgentTagsSection
                 agent={agent}
                 onPatchAgent={onPatchAgent}
@@ -230,10 +230,10 @@ export function AgentDetailPage({
                 ownerRestriction={ownerRestriction}
               />
             )}
-            {agent.source === "local" && onRefreshAgents && (
+            {(agent.source === "external" || agent.source === "local") && onRefreshAgents && (
               <LocalAgentBehaviorSection agent={agent} onRefreshAgents={onRefreshAgents} />
             )}
-            {agent.source === "local" && onRefreshAgents && (
+            {(agent.source === "external" || agent.source === "local") && onRefreshAgents && (
               <LocalAgentIntegrationsSection agent={agent} onRefreshAgents={onRefreshAgents} />
             )}
           </CardContent>
@@ -790,7 +790,7 @@ function RegisteredAgentModelConfig({ agent, onPatchAgent }: {
   const [allModels, setAllModels] = useState<ModelOption[]>([]);
 
   useEffect(() => {
-    // Merge Bedrock + LiteLLM (same as Chat/Invoke). Local agents only have
+    // Merge Bedrock + LiteLLM (same as Chat/Invoke). BYO agents only have
     // LiteLLM ids — Bedrock-only fetch left the editor empty.
     fetchAllModelOptions().then(setAllModels).catch(() => {});
   }, []);

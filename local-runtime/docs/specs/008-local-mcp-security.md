@@ -1,8 +1,12 @@
 # Spec 008 — Modelo de segurança do MCP local
 
-- **Status:** Rascunho
+- **Status:** **Superseded em parte** (2026-09-15) → [ADR 0014](../adr/0014-mcp-host-isolated-http-registration.md)
+  + [guide/security.md](../guide/security.md)
 - **Data:** 2026-09-12
-- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md)
+- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md) *(histórico)*
+
+> Trust boundary atual: Loom (JWT/ACL) → HTTP `mcp-*` (Bearer serviço) →
+> filho stdio **dentro** do pod. Sem provision no BFF.
 
 ## 1. Trust boundary
 

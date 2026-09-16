@@ -1,24 +1,28 @@
 # MCP Hub
 
-User-facing MCP facade (ADR 0007 / 0008 / 0010 / **0011** / **0012**).
+User-facing MCP facade (ADR 0007 / 0008 / 0010 / **0011** / **0012** / **0015**).
 Discovers MCP Clients on `initialize`. Admin grants catalog tools **per
-IdP profile**. IDE auth = **OAuth against the active IdP** (Keycloak /
-Microsoft Entra ID / …) — **no mint**, no `hs_…` Bearer in `mcp.json`.
+IdP profile**. IDE auth = **OAuth against the active IdP** — **no mint**.
+Ops UI (plugin) calls Hub `/v1/*` with the **same SPA JWT** (no Loom BFF).
 
 ```text
 IDE (URL only)
   → 401 + Protected Resource Metadata
-  → Active IdP (Keycloak / Microsoft Entra ID) Authorization Code + PKCE
-  → Bearer access_token (aud=loom-mcp-hub)
-  → mcp-hub validates JWKS → grants for user groups
-      → Loom BFF materialize / tools/call (service token)
+  → Active IdP Authorization Code + PKCE
+  → Bearer access_token (aud=loom-mcp-hub [+ loom-frontend dual-aud])
+  → mcp-hub validates JWKS → grants ∩ Loom catalog (user JWT)
+      → tools/call → MCP upstream HTTP
+      → agent__* → /api/agents (+ SSE)
+
+Loom SPA plugin
+  → Bearer SPA JWT (aud=loom-frontend) + mcp:read/write groups
+  → http://127.0.0.1:8790/v1/clients|analytics|…
 ```
 
 Host port loopback-only (`127.0.0.1:8790`). Health: `GET /health`.
 PRM: `GET /.well-known/oauth-protected-resource`.
-Store: **`MCP_HUB_DATABASE_URL`** (Postgres DB `mcp_hub`). JSON file
-(`MCP_HUB_STORE_PATH`) is fallback only when DSN unset; if PG is empty and the
-JSON file exists, clients are imported once at startup.
+Public info: `GET /v1/info`.
+Store: **`MCP_HUB_DATABASE_URL`** (Postgres DB `mcp_hub`).
 
 ## Cursor `mcp.json`
 
@@ -37,31 +41,24 @@ JSON file exists, clients are imported once at startup.
 ```
 
 Do **not** put `Authorization` headers. Use static `auth.CLIENT_ID` so Cursor
-skips Dynamic Client Registration (some IdPs, e.g. Keycloak Trusted Hosts,
-reject anonymous DCR). Redirect allowlist includes
-`http://localhost:8787/callback`. After connect, configure profile grants
-in Local runtime.
-
-Local stack: if Keycloak was created before the Hub OAuth client existed,
-either `make local.reset` (fresh import) or run
-`scripts/ensure-kc-mcp-hub-client.sh`. With Microsoft Entra ID as the
-active IdP, register an equivalent public PKCE app instead.
+skips Dynamic Client Registration.
 
 ## Env
 
 | Variable | Purpose |
 |----------|---------|
-| `MCP_HUB_SERVICE_TOKEN` | Hub ↔ Loom only |
-| `LOOM_BACKEND_URL` | Hub → backend |
+| `LOOM_BACKEND_URL` | Hub → backend (user JWT / dual-aud) |
+| `LOOM_ACCESS_TOKEN_MODE` | `dual_aud` (default) or `token_exchange` |
 | `MCP_HUB_DATABASE_URL` | Postgres DSN for Hub store (dedicated DB `mcp_hub`) |
 | `MCP_HUB_STORE_PATH` | Optional JSON path (fallback / migrate source) |
-| `MCP_HUB_MIGRATE_JSON` | `force` to re-import JSON over PG |
 | `MCP_HUB_RESOURCE` | Canonical resource URL (aud/resource check) |
 | `MCP_HUB_OIDC_ISSUER` | Token `iss` (browser URL of the **active** IdP) |
-| `MCP_HUB_OIDC_AUDIENCE` | Default `loom-mcp-hub` |
-| `MCP_HUB_OIDC_JWKS_URL` | JWKS reachable from container (may differ from browser issuer host) |
+| `MCP_HUB_OIDC_AUDIENCE` | Default `loom-mcp-hub` (IDE MCP) |
+| `MCP_HUB_ADMIN_AUDIENCES` | Default `loom-frontend,loom-mcp-hub` (ops `/v1/*`) |
+| `MCP_HUB_CORS_ORIGINS` | Browser origins for plugin ops |
+| `MCP_HUB_OIDC_JWKS_URL` | JWKS reachable from container |
 
-Contract: `2026-09-hub-1`. Docs: ADR 0011 / 0012, specs 017 / 024 / 025.
+Contract: `2026-09-hub-1`. Docs: ADR 0011 / 0012 / 0015, specs 017 / 024 / 025.
 
 ## Package layout (hexagonal strangler)
 

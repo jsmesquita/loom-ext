@@ -51,7 +51,7 @@ class TestLocalInvokeHelpers(unittest.TestCase):
             status="READY",
             region="local",
             account_id="local",
-            source="local",
+            source="external",
         )
         agent.config_entries = []
         from app.models.config_entry import ConfigEntry
@@ -79,25 +79,21 @@ class TestLocalInvokeHelpers(unittest.TestCase):
             status="READY",
             region="local",
             account_id="local",
-            source="local",
+            source="external",
         )
         agent.config_entries = []
         self.assertEqual(resolve_local_model_id(agent, "cursor-local"), "cursor-local")
 
-    def test_enrich_injects_mcp_runtime_token(self) -> None:
-        with patch.dict(
-            "os.environ",
-            {"MCP_RUNTIME_TOKEN": "svc-token"},
-            clear=False,
-        ):
-            out = enrich_mcp_servers_for_runtime([
-                {
-                    "name": "ado",
-                    "endpoint_url": "http://mcp-runtime:8787/v1/servers/ado/mcp",
-                    "auth": {"type": "service_bearer"},
-                }
-            ])
-        self.assertEqual(out[0]["auth"]["token"], "svc-token")
+    def test_enrich_preserves_auth_passthrough(self) -> None:
+        out = enrich_mcp_servers_for_runtime([
+            {
+                "name": "ado",
+                "endpoint_url": "http://mcp-azure-devops:8787/mcp",
+                "auth": {"type": "none"},
+            }
+        ])
+        self.assertEqual(out[0]["auth"]["type"], "none")
+        self.assertNotIn("token", out[0]["auth"])
 
 
 class TestLocalDemoAgentSeed(unittest.TestCase):

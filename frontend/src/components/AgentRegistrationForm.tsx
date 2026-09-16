@@ -648,7 +648,7 @@ export function AgentRegistrationForm({ mode, onRegister, onDeploy, onDeployHarn
   const filteredMcpServers = (registryActive
     ? mcpServers.filter(s => !s.registry_status || s.registry_status === "APPROVED")
     : mcpServers
-  ).filter((s) => s.transport_type !== "stdio");
+  ).filter((s) => s.transport_type === "sse" || s.transport_type === "streamable_http");
   const filteredA2aAgents = registryActive
     ? a2aAgents.filter(a => !a.registry_status || a.registry_status === "APPROVED")
     : a2aAgents;

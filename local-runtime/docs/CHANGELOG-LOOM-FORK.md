@@ -40,10 +40,10 @@ guias em [`guide/`](guide/). Pointers: Cursor
 | Área | Situação no fork | Notas para rebase |
 |------|------------------|-------------------|
 | IdP ACL (`backend/app/idp/`, auth, settings IdP) | **Core** grande | Conflitos prováveis em `auth.py`, `main.py`, routers |
-| MCP catalog / stdio / access | **Core** + templates na extension | Conferir `mcp.py`, `mcp_access.py`, forms |
+| MCP catalog | **Core** alinhado upstream (sse / streamable_http) | Sem stdio/`MCP_RUNTIME_URL`; hosts na extension ([ADR 0014](adr/0014-mcp-host-isolated-http-registration.md)) |
 | Invoke local / Orientador / LiteLLM | **Core** (`local_invoke`, `local_agents`) + LiteLLM em `etc/` + agent-runtime na extension | `invocations.py` / `local_invoke.py` sensíveis |
 | Extension Host UI | **Core** fino (`frontend/src/extensions/*`, `App.tsx`, vite alias) | Manter host estável (ADR 0006) |
-| Hub MCP (OAuth, clients, agents-as-tools) | **Core** BFF (`mcp_hub*`) + **Extension** sidecar `mcp-hub` + plugin Local runtime | BFF no Loom; data plane fora; telemetria Spec 028 em DB `mcp_hub` + attributions Core |
+| Hub MCP (OAuth, clients, agents-as-tools) | **Extension** sidecar `mcp-hub` + plugin (ops direto) | Core sem rotas Hub (ADR 0015); telemetria Spec 028 em DB `mcp_hub` |
 | Model Configuration (Agent Detail) | **Core** UI (`AgentDetailPage`, `DeploymentPanel`, `api/agents.ts`) | Merge Bedrock+LiteLLM no cliente — ver entrada 2026-09-14 |
 | Docs do fork | **Docs** em `local-runtime/docs/` (ADRs, specs, guias) | Baixo — sem `docs/` na raiz |
 
@@ -74,6 +74,147 @@ Checklist pós-merge:
 ---
 
 ## Registro
+
+### 2026-09-15 — Core sem Hub: plugin → Hub ops direto
+
+| | |
+|--|--|
+| **Zona** | **Core** + Extension + Config |
+| **Ok Dev** | Sim — “atacar tudo que possa deixar o core intocável” |
+| **Core removido** | `routers/mcp_hub.py`, `services/mcp_hub*.py`, `tests/test_mcp_hub.py`; includes em `main.py`; env Hub no backend overlay |
+| **Hub** | `/v1/*` com JWT SPA (`aud=loom-frontend`) + `mcp:read/write`; CORS; `GET /v1/info` |
+| **Plugin** | `hubFetch` → `VITE_MCP_HUB_URL` / `http://127.0.0.1:8790` |
+| **Nota** | Analytics FinOps join Core removido (só telemetria Hub) |
+
+### 2026-09-15 — ADR 0015 fase 5: remover data-plane Hub do Core
+
+| | |
+|--|--|
+| **Zona** | **Core** + Docs |
+| **Ok Dev** | Sim — limpeza pós-validação Cursor/Hub |
+| **Motivo** | Hub já materializa/call via JWT user + upstream; Core não deve conhecer o data-plane Hub |
+| **Removido** | Rotas `/api/mcp/hub/materialize*` / `tools/call` / `agents/*`; `mcp_hub_agents.py`; helpers materialize/call em `mcp_hub.py` |
+| **Mantido** | `GET /api/mcp/hub/info`; `/api/ext/local-runtime/*` + `mcp_hub_proxy` (ops/plugin; service token Hub↔BFF) |
+| **Docs** | ADR 0015 Aceito; architecture L2/L3; Hub README |
+
+### 2026-09-15 — ADR 0015 parcial: Hub data-plane sem `/api/mcp/hub`
+
+| | |
+|--|--|
+| **Zona** | **Extension** (`mcp-hub`) + Keycloak realm mapper |
+| **Ok Dev** | Sim — implementar, sem commit até teste |
+| **Hub** | Catálogo Loom ∩ grants; `tools/call` upstream; agents via `/api/agents` + SSE |
+| **Auth** | Dual-aud interim (`loom-mcp-hub` + `loom-frontend`); exchange opcional via env |
+| **Core** | Rotas `/api/mcp/hub/*` ainda existem (não usadas no data-plane Hub); remover após validação |
+
+### 2026-09-15 — ADR 0015 rascunho: Hub como cliente Loom
+
+| | |
+|--|--|
+| **Zona** | **Docs** |
+| **Ok Dev** | Sim (rascunho) |
+| **Docs** | [ADR 0015](adr/0015-mcp-hub-as-loom-api-client.md) — norte syncável; Core sem `/api/mcp/hub` |
+
+### 2026-09-15 — Varredura: resíduos mcp-runtime no Core
+
+| | |
+|--|--|
+| **Zona** | Core + fork sob `backend/` |
+| **Removido** | enrich `MCP_RUNTIME_TOKEN` / `service_bearer`; guard `stdio` no Hub; comentários compose |
+| **Já deleted** | `mcp_runtime_client.py`, `mcp_templates.py`, `test_mcp_runtime.py` |
+| **Mantido (fork)** | `db.py` DROP colunas stdio legadas; BYO/`local_invoke`/Hub (não são mcp-runtime) |
+
+### 2026-09-15 — mcp-* lateral trust (sem bearer; Core intacto)
+
+| | |
+|--|--|
+| **Zona** | **Extension** (`mcp-runtime` HTTP) |
+| **Ok Dev** | Sim |
+| **Motivo** | Evitar patch Core para Refresh Tools; rede Docker / loopback é a fronteira |
+| **Fix** | Auth off por default; opt-in `MCP_RUNTIME_REQUIRE_AUTH=1` |
+| **Core** | Revertido inject de `MCP_RUNTIME_TOKEN` em `services/mcp.py` |
+
+### 2026-09-15 — Docs: architecture + specs alinhados a ADR 0014
+
+| | |
+|--|--|
+| **Zona** | **Docs** |
+| **Ok Dev** | Sim |
+| **Docs** | `architecture.md` L2/dados; ADR 0004 superseded; specs 006–016/015/011/012/014; índices |
+
+### 2026-09-15 — Limpeza residual stdio / hosted / auth loom
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Extension** + **Docs** |
+| **Ok Dev** | Sim — “Pode seguir” nos residuais |
+| **Core** | Sem `mcp_runtime_client`; sem branches stdio/loom; Hub tool call só HTTP |
+| **Extension** | mcp-runtime só `TEMPLATE=` + `/mcp` (removidos hosted `/h` `/s` register API) |
+| **Plugin** | Label MCP sem `template_id` |
+
+### 2026-09-15 — Remoção residual do mint Hub (`mcp_hub_sessions`)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Docs** |
+| **Ok Dev** | Sim — limpar mint |
+| **Core** | Removidos model/funções/rotas mint; `DROP TABLE mcp_hub_sessions` |
+| **Docs** | architecture L4 |
+| **Mantido** | rejeição `hs_…` no sidecar oauth (fail-closed) |
+
+### 2026-09-15 — Loom sem mcp-runtime (só formulário HTTP)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Extension** + **Docs** |
+| **Ok Dev** | Sim — “Loom deixa de conhecer o mcp-runtime” / limpar modelo |
+| **Core** | Sem stdio/templates/`MCP_RUNTIME_URL`; DROP `mcp_servers.template_*` / `secret_refs` / `runtime_state`; stub `ensure_stdio_ready` só p/ import Hub |
+| **Extension** | Overlay: só `mcp-*` com `TEMPLATE=` |
+| **Docs** | ADR 0014, guia registro, architecture L2/L4 |
+| **Fora de escopo** | mcp-hub features (só `server_slug` usa `name`) |
+
+### 2026-09-15 — ADR 0014 v2: TEMPLATE= / serviço por MCP
+
+| | |
+|--|--|
+| **Zona** | **Extension** + **Docs** |
+| **Ok Dev** | Sim — desenho TEMPLATE= + `/mcp` |
+| **Extension** | `TEMPLATE` → boot single + `POST /mcp`; overlay: `mcp-azure-devops`, `mcp-rancher`, `mcp-grafana` |
+| **Docs** | ADR 0014, guia `mcp-host-http-registration.md` |
+| **Core** | (superseded pela entrada acima) |
+
+### 2026-09-15 — ADR 0014: MCP host isolado (hosted HTTP)
+
+| | |
+|--|--|
+| **Zona** | **Extension** + **Docs** |
+| **Ok Dev** | Sim — “Loom o mais isolado possível” |
+| **Extension** | `mcp-runtime` `hosted/servers.yaml`, boot auto, `GET /hosted`, `/h/{slug}/mcp` (legado all-in-one) |
+| **Docs** | ADR 0014, guia `mcp-host-http-registration.md`; backlog REF-2026-09-15-01 (remover stdio Core) |
+| **Core** | Sem remoção nesta fase — path stdio legado permanece |
+
+### 2026-09-15 — Rename `source=local` → `source=external` (UI: BYO agent)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Docs** |
+| **Ok Dev** | Sim — rename solicitado |
+| **Motivo** | “local” sugeria só laptop; valor canônico = fora do AgentCore |
+| **Core** | `agents.source`: `local`→`external`; seed/create; `is_external_agent()` (+ alias `is_local_agent`); migração em `init_db`; UI badge/label **BYO** |
+| **Compat** | Predicate ainda aceita `local` legado até a migração rodar |
+| **Docs** | architecture + ADR 0005 nota; este changelog |
+
+### 2026-09-15 — HITL approval policies no caminho local (agent-runtime)
+
+| | |
+|--|--|
+| **Zona** | **Core** + **Extension** |
+| **Ok Dev** | Sim — fix do gate que não acionava no Chat `source=local` |
+| **Motivo** | `local_invoke` enviava `approval_policies: []`; runtime não fazia loop_hook |
+| **Core** | `backend/app/services/local_invoke.py`, `backend/app/routers/invocations.py` — repassa policies ativas; BFF trata SSE `approval_needed` → `approval_request` / decide → POST runtime |
+| **Extension** | `agent-runtime` — match loop_hook antes de MCP tool; `POST .../approval-decision`; store `arm/wait/resolve_approval` |
+| **Limite** | Gate cobre **tools MCP** no agent-runtime. Tools A2A (ADK) ainda não rodam neste runtime. |
+| **Sync** | Baixo risco funcional; conflito possível em `local_invoke.py` / `invocations.py` no rebase |
 
 ### 2026-09-14 — Hub analytics Errors tab
 

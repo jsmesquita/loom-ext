@@ -11,9 +11,28 @@ from urllib.parse import parse_qs, urlparse
 from mcp_hub.application.ports import HubStore, LoomGateway, TokenValidator
 from mcp_hub.application.use_cases.tools import call_tool, list_tools
 from mcp_hub.application.wiring import default_loom, default_store, default_tokens
+from mcp_hub.domain.admin_rbac import has_scope
 from mcp_hub.domain.identity import parse_client_info
 
 logger = logging.getLogger("mcp_hub")
+
+_DEFAULT_CORS = (
+    "http://localhost:5173,http://127.0.0.1:5173,"
+    "http://localhost:3000,http://127.0.0.1:3000"
+)
+
+
+def _cors_origins() -> set[str]:
+    raw = os.environ.get("MCP_HUB_CORS_ORIGINS", _DEFAULT_CORS)
+    return {o.strip() for o in raw.split(",") if o.strip()}
+
+
+def _apply_cors(handler: BaseHTTPRequestHandler) -> None:
+    origin = handler.headers.get("Origin", "").strip()
+    if origin and origin in _cors_origins():
+        handler.send_header("Access-Control-Allow-Origin", origin)
+        handler.send_header("Access-Control-Allow-Credentials", "true")
+        handler.send_header("Vary", "Origin")
 
 
 def _json(handler: BaseHTTPRequestHandler, status: int, payload: Any) -> None:
@@ -21,6 +40,7 @@ def _json(handler: BaseHTTPRequestHandler, status: int, payload: Any) -> None:
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Content-Length", str(len(raw)))
+    _apply_cors(handler)
     handler.end_headers()
     handler.wfile.write(raw)
 
@@ -36,6 +56,7 @@ def _method_not_allowed(handler: BaseHTTPRequestHandler, allow: str = "POST") ->
     handler.send_response(405)
     handler.send_header("Allow", allow)
     handler.send_header("Content-Length", "0")
+    _apply_cors(handler)
     handler.end_headers()
 
 
@@ -55,9 +76,41 @@ class HubHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         logger.info(fmt, *args)
 
+    def _require_admin(self, *, write: bool = False) -> bool:
+        """Browser ops auth: SPA JWT (aud loom-frontend) + mcp:read/write groups."""
+        token = _bearer(self)
+        if not token:
+            _json(self, 401, {"error": {"message": "unauthorized"}})
+            return False
+        identity = self.tokens.validate_admin_token(token)
+        if identity is None:
+            _json(self, 401, {"error": {"message": "unauthorized"}})
+            return False
+        need = "mcp:write" if write else "mcp:read"
+        if not has_scope(list(identity.get("groups") or []), need):
+            _json(self, 403, {"error": {"message": "forbidden"}})
+            return False
+        return True
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(204)
+        _apply_cors(self)
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            "GET, PUT, PATCH, DELETE, POST, OPTIONS",
+        )
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Authorization, Content-Type, Accept",
+        )
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _unauthorized_mcp(self, *, jsonrpc: bool = False) -> None:
         self.send_response(401)
         self.send_header("WWW-Authenticate", self.tokens.www_authenticate_value())
+        _apply_cors(self)
         if jsonrpc:
             raw = json.dumps({
                 "jsonrpc": "2.0",
@@ -72,16 +125,6 @@ class HubHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-    def _require_service(self) -> bool:
-        expected = self.loom.service_token()
-        if not expected:
-            _json(self, 503, {"error": {"message": "hub_unavailable"}})
-            return False
-        if _bearer(self) != expected:
-            _json(self, 401, {"error": {"message": "unauthorized"}})
-            return False
-        return True
-
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path
@@ -91,17 +134,27 @@ class HubHandler(BaseHTTPRequestHandler):
         if path == "/.well-known/oauth-protected-resource":
             _json(self, 200, self.tokens.prm_document())
             return
+        if path == "/v1/info":
+            resource = self.tokens.resource_url()
+            _json(
+                self,
+                200,
+                {
+                    "mcp_hub_url": resource,
+                    "resource": resource,
+                    "auth": "oauth",
+                    "contract_version": "2026-09-hub-1",
+                },
+            )
+            return
         if path == "/v1/health":
-            if not self.loom.service_token():
-                _json(self, 503, {"status": "fail_closed"})
-                return
             token = _bearer(self)
-            if token == self.loom.service_token():
-                _json(self, 200, {"status": "ok", "contract_version": "2026-09-hub-1", "auth": "oauth"})
-                return
-            identity = self.tokens.validate_access_token(token) if token else None
+            identity = self.tokens.validate_admin_token(token) if token else None
             if identity is None:
                 self._unauthorized_mcp()
+                return
+            if not has_scope(list(identity.get("groups") or []), "mcp:read"):
+                _json(self, 403, {"error": {"message": "forbidden"}})
                 return
             _json(self, 200, {"status": "ok", "contract_version": "2026-09-hub-1", "auth": "oauth"})
             return
@@ -115,14 +168,14 @@ class HubHandler(BaseHTTPRequestHandler):
             _method_not_allowed(self)
             return
         if path == "/v1/clients":
-            if not self._require_service():
+            if not self._require_admin():
                 return
             qs = parse_qs(parsed.query)
             status_filter = (qs.get("status") or [None])[0]
             _json(self, 200, {"clients": self.store.list_clients(status_filter)})
             return
         if path == "/v1/analytics/summary":
-            if not self._require_service():
+            if not self._require_admin():
                 return
             qs = parse_qs(parsed.query)
             hours = int((qs.get("hours") or ["24"])[0] or 24)
@@ -130,7 +183,7 @@ class HubHandler(BaseHTTPRequestHandler):
             _json(self, 200, self.store.analytics_summary(hours=hours, slug=slug or None))
             return
         if path == "/v1/analytics/tools":
-            if not self._require_service():
+            if not self._require_admin():
                 return
             qs = parse_qs(parsed.query)
             hours = int((qs.get("hours") or ["24"])[0] or 24)
@@ -138,7 +191,7 @@ class HubHandler(BaseHTTPRequestHandler):
             _json(self, 200, self.store.analytics_tools(hours=hours, slug=slug or None))
             return
         if path == "/v1/analytics/errors":
-            if not self._require_service():
+            if not self._require_admin():
                 return
             qs = parse_qs(parsed.query)
             hours = int((qs.get("hours") or ["24"])[0] or 24)
@@ -151,7 +204,7 @@ class HubHandler(BaseHTTPRequestHandler):
             )
             return
         if path.startswith("/v1/clients/"):
-            if not self._require_service():
+            if not self._require_admin():
                 return
             rest = path.removeprefix("/v1/clients/").strip("/")
             if rest.endswith("/profile-grants") or rest.endswith("/grants"):
@@ -188,7 +241,7 @@ class HubHandler(BaseHTTPRequestHandler):
             _method_not_allowed(self)
             return
         if path.startswith("/v1/clients/"):
-            if not self._require_service():
+            if not self._require_admin(write=True):
                 return
             slug = path.removeprefix("/v1/clients/").strip("/")
             if not slug or "/" in slug:
@@ -198,6 +251,8 @@ class HubHandler(BaseHTTPRequestHandler):
                 _json(self, 404, {"error": {"message": "not_found"}})
                 return
             self.send_response(204)
+            _apply_cors(self)
+            self.send_header("Content-Length", "0")
             self.end_headers()
             return
         _json(self, 404, {"error": {"message": "not_found"}})
@@ -207,7 +262,7 @@ class HubHandler(BaseHTTPRequestHandler):
         if not path.startswith("/v1/clients/"):
             _json(self, 404, {"error": {"message": "not_found"}})
             return
-        if not self._require_service():
+        if not self._require_admin(write=True):
             return
         slug = path.removeprefix("/v1/clients/").strip("/")
         if not slug or "/" in slug:
@@ -247,7 +302,7 @@ class HubHandler(BaseHTTPRequestHandler):
         ):
             _json(self, 404, {"error": {"message": "not_found"}})
             return
-        if not self._require_service():
+        if not self._require_admin(write=True):
             return
         mid = (
             path.removeprefix("/v1/clients/")
@@ -295,9 +350,6 @@ class HubHandler(BaseHTTPRequestHandler):
         if path not in ("/mcp", "/"):
             _json(self, 404, {"error": {"message": "not_found"}})
             return
-        if not self.loom.service_token():
-            _json(self, 503, {"jsonrpc": "2.0", "id": None, "error": {"code": -32000, "message": "hub_unavailable"}})
-            return
         token = _bearer(self)
         if not token:
             self._unauthorized_mcp(jsonrpc=True)
@@ -306,6 +358,8 @@ class HubHandler(BaseHTTPRequestHandler):
         if identity is None:
             self._unauthorized_mcp(jsonrpc=True)
             return
+        # Raw bearer for Loom API calls (dual-aud / exchange — ADR 0015).
+        identity = {**identity, "access_token": token}
         try:
             body = _read_json(self)
         except json.JSONDecodeError:
@@ -413,14 +467,16 @@ def serve(
     bind_host = host or os.environ.get("MCP_HUB_HOST", "0.0.0.0")
     bind_port = port or int(os.environ.get("MCP_HUB_PORT", "8790"))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    if not HubHandler.loom.service_token():
-        logger.error("MCP_HUB_SERVICE_TOKEN unset — fail-closed")
     if not HubHandler.tokens.oidc_issuer():
         logger.error("MCP_HUB_OIDC_ISSUER unset — IDE OAuth will fail-closed")
     elif HubHandler.tokens.warm_jwks():
         logger.info("jwks warm ok issuer=%s", HubHandler.tokens.oidc_issuer())
     else:
         logger.warning("jwks warm failed — will retry on first request")
+    logger.info(
+        "hub ops auth=user JWT (mcp:read/write); CORS origins=%s",
+        sorted(_cors_origins()),
+    )
     try:
         os.makedirs(os.path.dirname(HubHandler.store.store_path()) or ".", exist_ok=True)
     except OSError:

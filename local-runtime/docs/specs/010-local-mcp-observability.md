@@ -1,8 +1,11 @@
 # Spec 010 — Observabilidade do MCP local
 
-- **Status:** Rascunho
+- **Status:** **Superseded** (2026-09-15) para o path stdio no Core
 - **Data:** 2026-09-12
-- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md)
+- **Implementa:** [ADR 0004](../adr/0004-local-mcp-runtime.md) *(histórico)*
+
+> Lifecycle hoje é do container Compose (`mcp-*`). Logs do host + health
+> `/health` (`mode=single_template`). Telemetria Hub = Spec 028.
 
 ## 1. Princípio
 

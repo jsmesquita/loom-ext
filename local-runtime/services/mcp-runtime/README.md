@@ -1,34 +1,32 @@
 # Local MCP runtime
 
-Compose service that supervises allowlisted stdio MCP children and exposes an
-internal streamable-HTTP facade. The Loom catalog stays the only MCP catalog.
+One container = one MCP (`TEMPLATE=<id>` → `POST /mcp`).
+
+Loom registers these as normal `streamable_http` servers (native form). The
+BFF does not call mcp-runtime APIs.
 
 ```text
-Backend FastAPI
-  → POST http://mcp-runtime:8787/s/{id}/mcp   (Bearer MCP_RUNTIME_TOKEN)
-    → this container
-      → Popen(template command, shell=False)
-        → child stdio JSON-RPC
+Loom catalog (streamable_http)
+  → http://mcp-azure-devops:8787/mcp
+    → TEMPLATE=azure-devops child (stdio inside the container)
 ```
 
-Templates live in `local-runtime/services/mcp-runtime/templates/` (owned by this
-service). The client never sends `command` or `args`.
-
-Host port is loopback-only (`127.0.0.1:8787`). Health: `GET /health` (no auth).
+Templates: `templates/*.yaml`. Params: `MCP_TEMPLATE_PARAMS` (JSON). Secrets: env.
+`TEMPLATE` is required at boot.
 
 ```text
 make local.mcp-runtime.test
 ```
 
-## Package layout (hexagonal leve)
+## Package layout
 
 ```text
 mcp-runtime/
-  templates/           # allowlist YAML (service-owned)
+  templates/
   mcp_runtime/
     domain/
     application/
     adapters/
-    echo_child.py      # child process for test-echo
+    echo_child.py
     __main__.py
 ```
